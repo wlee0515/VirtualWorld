@@ -1,0 +1,826 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Simple Game</title>
+  <script>
+    var gFramePosition = 1;
+  </script>
+  <script type="text/javascript" src="../javascript/threejs/three.js"></script>
+  <script type="text/javascript" src="../javascript/threejs/js/loaders/GLTFLoader.js"></script>
+  <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/utility.js"></script>
+  <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/WebRTI.js"></script>
+  <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
+  <script>
+    var gGlobal = {
+      Time : {
+        LastTimeStamp : (new Date()).getTime()
+      },
+      
+      ControlInput : {
+        JoyStick1 : null,
+        JoyStick2 : null,
+        OutputDiv_J1_id : "id_JoyStick_1",
+        OutputDiv_J2_id : "id_JoyStick_2",
+      },
+
+      ViewPoint : {
+        CanvasId : "id_OutputCanvas",
+        Scene : null,
+  			Camera : null,
+  			CameraPositionOffset : [-500.0,0.0,-500.0],
+  			CameraAngleOffset : [0.0,-20.0,0.0],
+        Renderer : null,
+        LoaderList : [],
+        MixerList : [],
+        x_rotateElements : [],
+        y_rotateElements : [],
+        z_rotateElements : []
+      },
+
+      Planet : {
+        Radius : 6371000,
+        DrawRadius : 5000,
+      },
+
+      Ownship : {
+        location : [0.0,0.0,0.0],
+        eulerAngle : [0.0,0.0,0.0],
+        modelPath : "https://wlee0515.github.io/site/pages/SimpleGame/Horse.glb",
+        modelRotation : [0.0,180.0,0.0],
+        modelOffset : [0.0,-0.05,0.0],
+        modelScale : [1.0,1.0,1.0],
+        
+      },
+
+      Images : {
+        Textures : {
+          Ring : "../images/ribbon_01.png",
+          Ground : "../images/ground_01.png",
+        }
+      },
+      
+      socket: null,
+      webRTI : null,
+
+      EntityManager : null,
+      placeHolder : 0
+    }
+
+    const gDegToRad = Math.PI/180;
+    const gRadToDeg = 180/Math.PI;
+
+    function convertGeoLocationToCartesian (iLatitude, iLongitude, iAltitude ) {
+      
+      var wLatitude = iLatitude*gDegToRad;
+      var wLongitude = iLongitude*gDegToRad;
+
+      var wRadius = (iAltitude + gGlobal.Planet.Radius)*(gGlobal.Planet.DrawRadius/gGlobal.Planet.Radius);
+      var wEquatorRadius = wRadius*Math.cos(wLatitude);
+      
+      return {
+        x : wEquatorRadius*Math.sin(wLongitude),
+        y : wRadius*Math.sin(wLatitude),
+        z : wEquatorRadius*Math.cos(wLongitude)
+      }
+    }
+
+    function getEulerQuaternion (iLatitude, iLongitude, iRoll, iPitch, iYaw ) {
+
+			var wQuat1 = new THREE.Quaternion();
+			var wRefEuler = new THREE.Euler(-iLatitude*gDegToRad + Math.PI/2, iLongitude*gDegToRad, 0, "ZYX" );
+			wQuat1.setFromEuler(wRefEuler);
+
+			var wQuat2 = new THREE.Quaternion();
+			var wLocalEuler = new THREE.Euler( iPitch*gDegToRad, -iYaw*gDegToRad, -iRoll*gDegToRad, "YXZ" );
+			wQuat2.setFromEuler(wLocalEuler);
+
+			wQuat1.multiply(wQuat2);
+      
+      return wQuat1;
+    }
+
+    function addNEDVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iNEDVector) {
+      
+      var wLatitude = iLatitude*gDegToRad;
+      var wLongitude = iLongitude*gDegToRad;
+
+      wLatitude += iNEDVector[0]/gGlobal.Planet.Radius;
+
+      var wHalfPi = Math.PI/2;
+      var w2Pi = Math.PI*2;
+      
+      while (wLatitude > wHalfPi) {
+        wLatitude = Math.PI - wLatitude;
+        wLongitude += Math.PI;
+      }
+      
+      while (wLatitude < -wHalfPi) {
+        wLatitude = -Math.PI - wLatitude;
+        wLongitude += Math.PI;
+      }
+      
+      var wLatitudeRadius = Math.cos(wLatitude)*gGlobal.Planet.Radius;
+
+      wLongitude += iNEDVector[1]/wLatitudeRadius;
+
+      while (wLongitude > Math.PI) {
+        wLongitude -= w2Pi;
+      }
+      while (wLongitude < -Math.PI) {
+        wLongitude += w2Pi;
+      }
+
+      var wAltitude = iAltitude - iNEDVector[2];
+      
+      return {
+        latitude : wLatitude*gRadToDeg,
+        longitude : wLongitude*gRadToDeg,
+        altitude : wAltitude
+      }
+    }
+
+    function rotateAxis(iAngle, iAxis, iVector) {
+      var wTempVector = [iVector[0],iVector[1],iVector[2]];
+      
+      var wAxis1 = (iAxis + 1)%3;
+      var wAxis2 = (iAxis + 2)%3;
+      var wCAng = Math.cos(iAngle*gDegToRad);
+      var wSAng = Math.sin(iAngle*gDegToRad);
+      wTempVector[wAxis1] = iVector[wAxis1]*wCAng + iVector[wAxis2]*wSAng
+      wTempVector[wAxis2] = -iVector[wAxis1]*wSAng + iVector[wAxis2]*wCAng
+
+      return wTempVector;
+    }
+
+    function rotateNEDToBody( iRoll, iPitch, iYaw, iNEDVector){
+      var wBodyVector = [iNEDVector[0],iNEDVector[1],iNEDVector[2]];
+      wBodyVector = rotateAxis(iYaw,   2, wBodyVector);
+      wBodyVector = rotateAxis(iPitch, 1, wBodyVector);
+      wBodyVector = rotateAxis(iRoll,  0, wBodyVector);
+      
+      return wBodyVector;
+    }
+
+    function rotateBodyToNED( iRoll, iPitch, iYaw, iBodyVector){
+      var wNEDVector = [iBodyVector[0],iBodyVector[1],iBodyVector[2]];
+      wNEDVector = rotateAxis(-iRoll,  0, wNEDVector);
+      wNEDVector = rotateAxis(-iPitch, 1, wNEDVector);
+      wNEDVector = rotateAxis(-iYaw,   2, wNEDVector);
+      
+      return wNEDVector;
+      
+    }
+
+    function addBodyVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iRoll, iPitch, iYaw, iBodyVector) {
+      
+      var wNEDVector = rotateBodyToNED( iRoll, iPitch, iYaw, iBodyVector);
+      return addNEDVectorToGeoLocation(iLatitude, iLongitude , iAltitude , wNEDVector);
+    }
+
+    function EntityManager() {
+      this.EntityList = {};
+      
+      this.generateEntityIdString = function (iSource, id ) {
+        return iSource + ' - ' + id;
+      }
+
+      this.createEntity = function (iEntityId) {
+        if (null == this.EntityList[iEntityId]) {
+          var wGeometry = new THREE.BoxGeometry(1, 1, 1);
+          var wMaterial = new THREE.MeshLambertMaterial({ color: hashCode(iEntityId) });
+          var wMesh = new THREE.Mesh(wGeometry, wMaterial);
+          var wGroup =  new THREE.Group();
+          wGroup.add(wMesh);
+          gGlobal.ViewPoint.Scene.add(wGroup);
+
+          this.EntityList[iEntityId] = {
+            isUpdated : false,
+            geometry : wGeometry,
+            material : wMaterial,
+            mesh : wMesh,
+            model : null,
+            group : wGroup,
+            modelPath : "",
+            modelRotation: [0.0,0.0,0.0],
+            modelOffset: [0.0,0.0,0.0],
+            modelScale: [1.0,1.0,1.0]
+          }
+        }
+      }
+      
+      this.removeEntity = function (iEntityId) {
+        var wEntity = this.EntityList[iEntityId];
+        if (null != wEntity) {
+          
+          gGlobal.ViewPoint.Scene.remove( wEntity.mesh );
+          wEntity.geometry.dispose();
+          wEntity.material.dispose();
+          
+          if (null != wEntity.group) {
+            gGlobal.ViewPoint.Scene.remove( wEntity.group );
+          }
+
+          delete this.EntityList[iEntityId];
+        }
+      }
+
+      
+      this.getEntity = function (iEntityId) {
+        this.createEntity(iEntityId);
+        return this.EntityList[iEntityId];
+      }
+
+      this.removeNoneUpdated = function() {
+        var wEntries = Object.entries(this.EntityList);
+        for (var wi=0; wi < wEntries.length; ++wi) {
+          var wEntry = wEntries[wi];
+          if (true == wEntry[1].isUpdated) {
+            wEntry[1].isUpdated = false;
+          }
+          else {
+            this.removeEntity(wEntry[0]);
+          }
+        }
+      }
+
+      this.setEntityPosition = function (iEntityId, iLocation, iEuler) {
+
+        var wPosition = convertGeoLocationToCartesian(iLocation[0],iLocation[1],iLocation[2]);
+
+        var wEulerQuat = getEulerQuaternion(iLocation[0],iLocation[1], iEuler[0],iEuler[1],iEuler[2]);
+
+        var wEntity = this.getEntity(iEntityId);
+        wEntity.isUpdated = true;
+        wEntity.group.position.set(wPosition.x, wPosition.y, wPosition.z);
+        wEntity.group.rotation.setFromQuaternion(wEulerQuat);
+
+      }
+
+      this.setEntityModel = function (iEntityId, iModelPath, iRotation, iOffset, iScale) {
+        
+        var wEntity = this.EntityList[iEntityId];
+        if (null == wEntity) {
+          return;
+        }
+
+        wEntity.isUpdated = true;
+        
+        if ((wEntity.modelRotation[0] != iRotation[0]) || (wEntity.modelRotation[1] != iRotation[1]) || (wEntity.modelRotation[2] != iRotation[2]) ) {
+          wEntity.modelRotation = [iRotation[0],iRotation[1],iRotation[2]];
+          if (null != wEntity.model){
+            wEntity.model.rotation.set(wEntity.modelRotation[0]*gDegToRad, wEntity.modelRotation[1]*gDegToRad, wEntity.modelRotation[2]*gDegToRad);
+          }
+        }
+        
+        if ((wEntity.modelOffset[0] != iOffset[0]) || (wEntity.modelOffset[1] != iOffset[1]) || (wEntity.modelOffset[2] != iOffset[2]) ) {
+          wEntity.modelOffset = [iOffset[0],iOffset[1],iOffset[2]];
+          if (null != wEntity.model){
+            wEntity.model.position.set(wEntity.modelOffset[0], wEntity.modelOffset[1], wEntity.modelOffset[2]);
+          }
+        }
+
+        if ((wEntity.modelScale[0] != iScale[0]) || (wEntity.modelScale[1] != iScale[1]) || (wEntity.modelScale[2] != iScale[2]) ) {
+          wEntity.modelScale = [iScale[0],iScale[1],iScale[2]];
+          if (null != wEntity.model){
+            var wModelScale = gGlobal.Planet.DrawRadius/gGlobal.Planet.Radius;
+            wEntity.model.scale.set(wEntity.modelScale[0]*wModelScale, wEntity.modelScale[1]*wModelScale, wEntity.modelScale[2]*wModelScale);
+          }
+        }
+
+        if (wEntity.modelPath == iModelPath) {
+          return;
+        }
+        
+        var wEntityId = iEntityId;
+        wEntity.modelPath = iModelPath;
+
+        gGlobal.ViewPoint.LoaderList["gltf"].load(iModelPath, function (iModelData) {
+          if (0 != iModelData.animations.length) {
+            var wMixer = new THREE.AnimationMixer(iModelData.scene);
+            var wAction = wMixer.clipAction(iModelData.animations[0]);
+            wAction.play();
+            gGlobal.ViewPoint.MixerList.push(wMixer);
+          }
+
+          var wEntity = this.EntityList[wEntityId];
+
+          if (null != wEntity) {
+
+            if (null != wEntity.model) {
+              wEntity.model.dispose();
+            }
+
+            wEntity.model = iModelData.scene;
+            
+            var wModelScale = gGlobal.Planet.DrawRadius/gGlobal.Planet.Radius;
+
+            wEntity.model.rotation.set(wEntity.modelRotation[0]*gDegToRad, wEntity.modelRotation[1]*gDegToRad, wEntity.modelRotation[2]*gDegToRad);
+            wEntity.model.position.set(wEntity.modelOffset[0], wEntity.modelOffset[1], wEntity.modelOffset[2]);
+            wEntity.model.scale.set(wEntity.modelScale[0]*wModelScale, wEntity.modelScale[1]*wModelScale, wEntity.modelScale[2]*wModelScale);
+
+            wEntity.group.add(wEntity.model);
+            wEntity.mesh.visible = false;
+          }
+          else {
+            iModelData.dispose();
+          }
+        }.bind(this))
+      }
+    }
+
+
+    function setupViewPoint() {
+			gGlobal.ViewPoint.Scene = new THREE.Scene();
+			gGlobal.ViewPoint.Camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 100000 );
+			gGlobal.ViewPoint.Camera.position.set( 0, 0, 20 );
+			gGlobal.ViewPoint.Camera.lookAt( 0, 0, 0 );
+
+			var wCanvasDOM = document.getElementById(gGlobal.ViewPoint.CanvasId);
+			if (null != wCanvasDOM) {
+				gGlobal.ViewPoint.Renderer = new THREE.WebGLRenderer({antialias: true, canvas:  wCanvasDOM,  alpha: true });
+			}
+			else {
+				gGlobal.ViewPoint.Renderer = new THREE.WebGLRenderer({antialias: true,  alpha: true });
+				document.body.appendChild( gGlobal.ViewPoint.Renderer.domElement );
+      }
+      gGlobal.ViewPoint.Renderer.setClearColor( 0x000000, 0 );
+			gGlobal.ViewPoint.Renderer.setPixelRatio( window.devicePixelRatio );
+
+      gGlobal.ViewPoint.Renderer.toneMapping = THREE.LinearToneMapping;
+      gGlobal.ViewPoint.Renderer.toneMappingExposure = Math.pow( 0.94, 5.0 );
+      gGlobal.ViewPoint.Renderer.shadowMap.enabled = true;
+      gGlobal.ViewPoint.Renderer.shadowMap.type = THREE.PCFShadowMap;
+
+      var wGLTFloader = new THREE.GLTFLoader();
+      wGLTFloader.crossOrigin = true;
+      gGlobal.ViewPoint.LoaderList["gltf"] = wGLTFloader;
+
+      var resizeFunction = function(){
+
+				if (null != gGlobal.ViewPoint.Renderer) {
+					var wWidth = window.innerWidth;
+					var wHeight = window.innerHeight;
+					var wCanvasDOM = document.getElementById(gGlobal.ViewPoint.CanvasId);
+					if (null != wCanvasDOM) {
+					  wWidth = wCanvasDOM.width = wCanvasDOM.parentNode.clientWidth;
+					  wHeight = wCanvasDOM.height = wCanvasDOM.parentNode.clientHeight;
+					}
+					gGlobal.ViewPoint.Renderer.setSize(wWidth, wHeight);
+	
+					if (null != gGlobal.ViewPoint.Camera) {
+						gGlobal.ViewPoint.Camera.aspect = wWidth / wHeight;
+						gGlobal.ViewPoint.Camera.updateProjectionMatrix();
+					}
+				}
+      }
+      
+      resizeFunction();
+      window.addEventListener("resize", resizeFunction);
+    }
+
+    function loadGLTF(iPath) {
+      gGlobal.ViewPoint.LoaderList["gltf"].load( iPath, function ( iModelData ) {
+    /*    
+        iModelData.animations; // Array<THREE.AnimationClip>
+        iModelData.scene; // THREE.Scene
+		    iModelData.scenes; // Array<THREE.Scene>
+        iModelData.cameras; // Array<THREE.Camera>
+        iModelData.asset; // Object
+  */
+        if (0 != iModelData.animations.length) {
+          var wMixer = new THREE.AnimationMixer( iModelData.scene );
+	        var wAction = wMixer.clipAction( iModelData.animations[ 0 ] );
+          wAction.play();
+          gGlobal.ViewPoint.MixerList.push(wMixer);
+        }
+  
+        var wModel = iModelData.scene;
+//        wModel.position.set(-1.0, -10.5, -1.0);
+        wModel.position.set(0.0, 0.0, 0.0);
+        wModel.rotation.set(0, 0, 0);
+//        wModel.scale.set(0.05,0.05,0.05);
+
+        var wGroup = new THREE.Group();
+        wGroup.add( wModel );
+        wGroup.position.set(-5.0, 0, 0.0);
+        wGroup.name = "Model";
+        gGlobal.ViewPoint.Scene.add( wGroup );
+
+      });
+    }
+
+    function setupScene() {
+      
+      var light = new THREE.PointLight( 0xffffcc, 10, 50, 2 );
+      light.position.set( 4, 30, -20 );
+      gGlobal.ViewPoint.Scene.add( light );
+
+      var light2 = new THREE.AmbientLight( 0x20202A, 10 );
+      light2.position.set( 30, -10, 30 );
+      gGlobal.ViewPoint.Scene.add( light2 );
+
+      gGlobal.ViewPoint.Scene.add( new THREE.HemisphereLight( 0xffffbb, 0x080820, 0.01 ) );
+      gGlobal.ViewPoint.Scene.add(new THREE.DirectionalLight( 0xffffff, 0.1 ));
+      
+
+      // Setup Planet     
+      
+      var wPlanetGroup = new THREE.Group();
+      wPlanetGroup.name = "Planet";
+      gGlobal.ViewPoint.Scene.add( wPlanetGroup );
+      
+      var wPlanetTexture = new THREE.TextureLoader().load(gGlobal.Images.Textures.Ground);
+      wPlanetTexture.magFilter = THREE.NearestFilter;
+      wPlanetTexture.minFilter = THREE.NearestMipmapLinearFilter;
+      //wPlanetTexture.anisotropy = 16;
+      wPlanetTexture.wrapS = THREE.RepeatWrapping;
+      wPlanetTexture.wrapT = THREE.RepeatWrapping;
+      wPlanetTexture.repeat.set( 360*60/5, 180*60/5 );
+
+      var wPlanetGeometry = new THREE.SphereGeometry( gGlobal.Planet.DrawRadius, 360, 180 );
+      var wPlanetMaterial = new THREE.MeshLambertMaterial( {map: wPlanetTexture , transparent: true , opacity: 1.0 ,color: 0xffffff, depthTest: true } );
+      var wPlanet = new THREE.Mesh( wPlanetGeometry, wPlanetMaterial );
+      wPlanet.name = "PlanetWater";
+      wPlanetGroup.add( wPlanet );
+
+
+      // load a texture, set wrap mode to repeat
+      //var wRingTexture = new THREE.TextureLoader().load( "./images/ribbon.png" );
+      var wRingTexture = new THREE.TextureLoader().load( gGlobal.Images.Textures.Ring, function ( texture ) {
+
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestMipmapLinearFilter;
+        //texture.anisotropy = 16;
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+
+        var wPixelPerMeter = 20;
+        var wRibbonRadius = gGlobal.Planet.DrawRadius + 150;
+        var wRibbonLength = wRibbonRadius*2*Math.PI;
+
+        var wImageWidth = texture.image.width / wPixelPerMeter;
+        var wImageHeight = texture.image.height / wPixelPerMeter;
+        var wVCount = 1;
+        var wHCount = Math.ceil(wRibbonLength/(wImageWidth));
+        var wScale = (wRibbonLength/wHCount)/wImageWidth;
+        var wRibbonWidth = wScale*wVCount*wImageHeight;
+        texture.repeat.set( -wHCount, wVCount );
+
+        var points = [];
+        for (var i = -1; i <= 1; i++) {
+          points.push(new THREE.Vector2(wRibbonRadius, i * wRibbonWidth / 2));
+        }
+        
+        var wRingGeometry = new THREE.LatheGeometry( points , 360);
+        var wRingMaterial = new THREE.MeshBasicMaterial( { map: wRingTexture  , transparent: true , opacity: 1.0 ,color: 0xffffff, depthTest: true , side : THREE.DoubleSide} ); 
+
+        
+        var wShiftArray = [
+          [0.0,0.0,0.0], 
+          [0.0,0.0,5.0], 
+          [0.0,30.0,10.0],
+          [0.0,60.0,15.0], 
+          [0.0,90.0,20.0],
+          [0.0,120.0,25.0], 
+          [0.0,150.0,30.0],
+          [0.0,180.0,35.0], 
+          [0.0,210.0,45.0], 
+          [0.0,240.0,50.0], 
+          [0.0,270.0,55.0], 
+          [0.0,300.0,60.0], 
+          [0.0,330.0,65.0], 
+     //     [0.0,180.0,5.0],
+       //   [0.0,240.0,-5.0], 
+      //    [0.0,90.0,-45.0], 
+      //    [0.0,0.0,90.0],   
+      //    [0.0,90.0,90.0],  
+        ]
+        for (var wi = 0; wi < wShiftArray.length; ++wi) {
+          var wRing = new THREE.Mesh(wRingGeometry, wRingMaterial);
+          gGlobal.ViewPoint.y_rotateElements.push([wRing, Math.pow(-1, wi) * 0.005]);
+            
+          var wRingContainer = new THREE.Group();
+          wRingContainer.add(wRing);
+          wRingContainer.rotation.x = wShiftArray[wi][0]*gDegToRad;
+          wRingContainer.rotation.y = wShiftArray[wi][1]*gDegToRad;
+          wRingContainer.rotation.z = wShiftArray[wi][2]*gDegToRad;
+          wScale = Math.pow(-1, wi)*0.001 + 1;
+          wRingContainer.scale.z = wScale;
+          wRingContainer.scale.x = wScale;
+          wPlanetGroup.add(wRingContainer);
+        }
+        
+        //gGlobal.ViewPoint.x_rotateElements.push([wRing,0.005]);
+        //wPlanetGroup.add( wRing );
+      });
+      wRingTexture.anisotropy = gGlobal.ViewPoint.Renderer.getMaxAnisotropy();
+      
+      //loadGLTF("../../thirdparty/sampleGLFT/2.0/VC/glTF/VC.gltf")
+      //loadGLTF('https://threejsfundamentals.org/threejs/resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf')
+      
+    }
+
+    function updateScene(iDt) {
+      
+      for (var wi = 0; wi < gGlobal.ViewPoint.MixerList.length; ++wi) {
+        gGlobal.ViewPoint.MixerList[wi].update(iDt);
+      }
+      
+      for (var wi = 0; wi < gGlobal.ViewPoint.MixerList.length; ++wi) {
+        gGlobal.ViewPoint.MixerList[wi].update(iDt);
+      }
+      
+      for (var wi = 0; wi < gGlobal.ViewPoint.x_rotateElements.length; ++wi) {
+        gGlobal.ViewPoint.x_rotateElements[wi][0].rotation.x += iDt*gGlobal.ViewPoint.x_rotateElements[wi][1];        
+      }
+      
+      for (var wi = 0; wi < gGlobal.ViewPoint.y_rotateElements.length; ++wi) {
+        gGlobal.ViewPoint.y_rotateElements[wi][0].rotation.y += iDt*gGlobal.ViewPoint.y_rotateElements[wi][1];        
+      }
+      
+      for (var wi = 0; wi < gGlobal.ViewPoint.z_rotateElements.length; ++wi) {
+        gGlobal.ViewPoint.z_rotateElements[wi][0].rotation.z += iDt*gGlobal.ViewPoint.z_rotateElements[wi][1];        
+      }
+
+			gGlobal.ViewPoint.Renderer.render(gGlobal.ViewPoint.Scene, gGlobal.ViewPoint.Camera);
+    }
+    
+    function updateJoystick(iDt) {
+      
+      var wJ1_State = { x:0,y:0,z:0};
+      var wJ2_State = { x:0,y:0,z:0};
+
+      if (null != gGlobal.ControlInput.JoyStick1) {
+        wJ1_State = gGlobal.ControlInput.JoyStick1.getAxisPosition();
+      }
+      
+      if (null != gGlobal.ControlInput.JoyStick2) {
+        wJ2_State = gGlobal.ControlInput.JoyStick2.getAxisPosition();
+      }
+      
+      gGlobal.Ownship.eulerAngle[0] = wJ2_State.z*90;
+      gGlobal.Ownship.eulerAngle[1] = wJ2_State.y*90;
+      gGlobal.Ownship.eulerAngle[2] += wJ2_State.x;
+
+      var wOverallGain = 1;
+      var wGain = [100.0,100.0,100.0];
+      var wPositionChange = [wJ1_State.y , wJ1_State.x, wJ1_State.z];
+      wPositionChange[0] = wPositionChange[0]*wGain[0]*wOverallGain;
+      wPositionChange[1] = wPositionChange[1]*wGain[1]*wOverallGain;
+      wPositionChange[2] = wPositionChange[2]*wGain[2]*wOverallGain;
+
+      var wNewVector = rotateBodyToNED(gGlobal.Ownship.eulerAngle[0]
+      , gGlobal.Ownship.eulerAngle[1]
+      , gGlobal.Ownship.eulerAngle[2]
+      , wPositionChange
+      );
+
+      var wNewPosition = addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
+      , gGlobal.Ownship.location[1]
+      , gGlobal.Ownship.location[2]
+      , gGlobal.Ownship.eulerAngle[0]
+      , gGlobal.Ownship.eulerAngle[1]
+      , gGlobal.Ownship.eulerAngle[2]
+      , wPositionChange);
+
+      gGlobal.Ownship.location[0] = wNewPosition.latitude;
+      gGlobal.Ownship.location[1] = wNewPosition.longitude;
+      gGlobal.Ownship.location[2] = wNewPosition.altitude;
+
+/*
+      
+  			gGlobal.ViewPoint.Camera.rotation.y -= wJ2_State.x*0.1;
+	  		gGlobal.ViewPoint.Camera.rotation.x = wJ2_State.y*0.1;
+		  	gGlobal.ViewPoint.Camera.rotation.z = wJ2_State.z*0.1;
+        gGlobal.ViewPoint.Camera.position.x += wJ1_State.x*5;
+  			gGlobal.ViewPoint.Camera.position.y += wJ1_State.y*5;
+      	gGlobal.ViewPoint.Camera.position.z += wJ1_State.z*5;
+  */      
+/*
+      wCube = gGlobal.ViewPoint.Scene.getObjectByName( "Planet", true );
+			wCube.rotation.y += wJ2_State.x*0.1;
+			wCube.rotation.x += wJ2_State.y*0.1;
+      wCube.rotation.z += wJ2_State.z*0.1;
+      */
+
+    }
+
+    function updateCameraLocation(iDt) {
+
+      
+      var wNewPosition = addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
+      , gGlobal.Ownship.location[1]
+      , gGlobal.Ownship.location[2]
+      , gGlobal.Ownship.eulerAngle[0]
+      , gGlobal.Ownship.eulerAngle[1]
+      , gGlobal.Ownship.eulerAngle[2]
+      , gGlobal.ViewPoint.CameraPositionOffset);
+
+      var wPosition = convertGeoLocationToCartesian(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
+      
+      var wEuler = [ gGlobal.Ownship.eulerAngle[0] + gGlobal.ViewPoint.CameraAngleOffset[0]
+                  ,  gGlobal.Ownship.eulerAngle[1] + gGlobal.ViewPoint.CameraAngleOffset[1]
+                  ,  gGlobal.Ownship.eulerAngle[2] + gGlobal.ViewPoint.CameraAngleOffset[2]];
+
+      var wEulerQuat = getEulerQuaternion(wNewPosition.latitude,wNewPosition.longitude, wEuler[0],wEuler[1],wEuler[2]);
+
+      gGlobal.ViewPoint.Camera.position.set(wPosition.x,wPosition.y,wPosition.z);
+      gGlobal.ViewPoint.Camera.rotation.setFromQuaternion(wEulerQuat);
+    }
+
+    function updateEntities(iDt) {
+      var wEntityList = [
+        {
+          id:"Ownship",
+          time : (new Date()).getTime(),
+          location : gGlobal.Ownship.location,
+          eulerAngle : gGlobal.Ownship.eulerAngle,
+          modelPath : gGlobal.Ownship.modelPath,
+          modelRotation : gGlobal.Ownship.modelRotation,
+          modelOffset : gGlobal.Ownship.modelOffset,
+          modelScale : gGlobal.Ownship.modelScale
+        }
+      ]
+      
+      var wEntityId = gGlobal.EntityManger.generateEntityIdString("self", "Ownship" );
+      gGlobal.EntityManger.setEntityPosition(wEntityId, gGlobal.Ownship.location,  gGlobal.Ownship.eulerAngle);
+      gGlobal.EntityManger.setEntityModel(wEntityId, gGlobal.Ownship.modelPath, gGlobal.Ownship.modelRotation, gGlobal.Ownship.modelOffset,  gGlobal.Ownship.modelScale)
+
+      gGlobal.webRTI.setObject("EntityManager", "EntityList", wEntityList);
+
+      var wRemote = gGlobal.webRTI.getRemoteObjectList("EntityManager", "EntityList");
+
+      if (null != wRemote) {
+
+        var wEntries = Object.entries(wRemote);
+        
+        for (var wi = 0 ; wi < wEntries.length; ++wi){
+          var wRemoteList = wEntries[wi][1];
+        
+          for (var wj = 0 ; wj < wRemoteList.length; ++wj){
+            var wEntity = wRemoteList[wj];
+            var wEntityId = gGlobal.EntityManger.generateEntityIdString(wEntries[wi][0],wEntity.id );
+            gGlobal.EntityManger.setEntityPosition(wEntityId, wEntity.location, wEntity.eulerAngle);
+            gGlobal.EntityManger.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
+            
+          }     
+
+        }
+      }
+      gGlobal.EntityManger.removeNoneUpdated();
+
+    }
+
+    function processTime(iDt) {
+      updateJoystick(iDt);
+      updateEntities(iDt);
+      updateCameraLocation(iDt);
+      updateScene(iDt);
+    }
+
+    function tick() {
+      clearLog();
+      log( "Time : " + (new Date()).getTime() + " ms");
+      
+      var wTimeStep = (new Date()).getTime() - gGlobal.Time.LastTimeStamp;
+      wTimeStep /= 1000;
+      
+      log("Time Step : " + wTimeStep + " s");
+
+      processTime(wTimeStep);
+      window.requestAnimationFrame(tick);
+      gGlobal.Time.LastTimeStamp = (new Date()).getTime();
+
+    }
+
+    function log(iLog) {
+      var wDOM = document.getElementById("LogArea")
+      wDOM.value += iLog + "\n";
+    }
+    
+    function clearLog() {
+      var wDOM = document.getElementById("LogArea")
+      wDOM.value = "";
+    }
+    
+  </script>
+  <script type="module">
+    
+    import GamePadObj from "https://wlee0515.github.io/site/modules/GamePad.mjs";
+
+    function init() {
+      
+      console.log = function () {
+        log("Console LOG: " + Array.from(arguments));
+      }
+
+      console.warn = function () {
+        log("Console WARN: " + Array.from(arguments));
+      }
+
+      console.error = function () {
+        log("Console ERROR: " + Array.from(arguments));
+      }
+      
+      log("Console Setup Complete");
+
+      if (null != GamePadObj){
+        var wJ1 = document.getElementById(gGlobal.ControlInput.OutputDiv_J1_id);
+        gGlobal.ControlInput.JoyStick1 = new GamePadObj.ThreeAxisJoystick(wJ1, true, 2);
+
+        var wJ2 = document.getElementById(gGlobal.ControlInput.OutputDiv_J2_id);
+        gGlobal.ControlInput.JoyStick2 = new GamePadObj.ThreeAxisJoystick(wJ2, false, 7);
+        
+        log("Joystick Creation Complete");
+      }
+      
+
+      gGlobal.socket = io("https://webrti.herokuapp.com");
+//        gGlobal.socket = io("http://localhost");
+      log("SocketIO Creation Complete");
+
+      gGlobal.webRTI = new WebRTI(gGlobal.socket);
+      log("WebRTI Federate Creation Complete");
+
+      gGlobal.EntityManger = new EntityManager();
+      log("Entity Manager Creation Complete");
+
+      setupViewPoint();
+      log("Setup ViewPoint Complete");
+
+  		setupScene();
+      log("Setup Scene Complete");
+      
+      log("Starting Tick");
+      tick();
+    }
+
+    window.addEventListener("load", init);
+  </script>
+
+</head>
+
+<style>
+  body {
+    background: rgb(255, 255, 255);
+    margin: 0px;
+    padding: 0px;
+  }
+
+  #id_JoyStick_1 {
+    width: 150px;
+    height: 150px;
+    z-index: 100;
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+  }
+  
+  #id_JoyStick_2 {
+    width: 150px;
+    height: 150px;
+    z-index: 100;
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  #id_OutputCanvasContainer {
+    width: 100vw;
+    height: 100vh;
+    z-index: 100;
+    position: fixed;
+    top: 0px;
+    left: 0px;
+    margin: 0px;
+    padding: 0px;
+  }
+
+  #id_menu {
+    position: fixed;
+    top: 0px;
+    left: 0px;
+
+  }
+  #LogArea {
+    resize: both;
+    overflow: auto;
+    min-width: 300px;
+  }
+</style>
+<body>
+  <div id="id_OutputCanvasContainer">
+    <canvas id="id_OutputCanvas"></canvas>
+  </div>
+  <div id="id_menu">
+    <textarea id="LogArea"></textarea>
+  </div>
+  <div id="id_JoyStick_1">
+  </div>
+  <div id="id_JoyStick_2">
+  </div>
+  </br>
+</body>
+
+</html>
