@@ -4,8 +4,6 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Virtual World ViewPoint</title>
-  <script type="text/javascript" src="../javascript/threejs/three.js"></script>
-  <script type="text/javascript" src="../javascript/threejs/js/loaders/GLTFLoader.js"></script>
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/utility.js"></script>
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/WebRTI.js"></script>
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
@@ -203,10 +201,7 @@
 
       log("Entity Manager Creation Complete");
 
-      var wGLTFloader = new THREE.GLTFLoader();
-      wGLTFloader.crossOrigin = true;
-
-      gGlobal.ViewPoint.PlanetRenderer = new mod_PlanetRenderer.PlanetRenderer(gGlobal.ViewPoint.CanvasId, gGlobal.ViewPoint.DrawRadius, wGLTFloader);
+      gGlobal.ViewPoint.PlanetRenderer = new mod_PlanetRenderer.PlanetRenderer(gGlobal.ViewPoint.CanvasId, gGlobal.ViewPoint.DrawRadius);
       gGlobal.ViewPoint.PlanetRenderer.bindEntityManager(gGlobal.EntityManger);
 
 
@@ -227,7 +222,7 @@
 
 <style>
   body {
-    background: rgb(255, 255, 255);
+    background: rgb(50, 0, 50);
     margin: 0px;
     padding: 0px;
   }

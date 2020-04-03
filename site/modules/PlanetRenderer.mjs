@@ -1,5 +1,6 @@
-import mod_PlanetModel from "../modules/PlanetModel.mjs";
-import {Scene, PerspectiveCamera, WebGLRenderer , LinearToneMapping, PCFShadowMap} from "../javascript/threejs/three.mjs";
+import mod_PlanetModel from "./PlanetModel.mjs";
+import * as THREE from '../javascript/threejs/three.mjs';
+import { GLTFLoader } from '../javascript/threejs/jsm/loaders/GLTFLoader.mjs';
 
 const gDegToRad = Math.PI / 180;
 
@@ -30,7 +31,7 @@ function getEulerQuaternion (iLatitude, iLongitude, iRoll, iPitch, iYaw ) {
   return wQuat1;
 }
 
-export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius, iGLTFloader) {
+export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
   
   this.InternalData = {
     CanvasId : iOutputCanvasId,
@@ -45,12 +46,14 @@ export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius, iGLTFloader) 
     y_rotateElements : [],
     z_rotateElements : [],
     DrawRadius : iPlanetDrawRadius,
-    GLTFloader : iGLTFloader
+    GLTFloader : new GLTFLoader()
   }
+  
+  this.InternalData.GLTFloader.crossOrigin = true;
 
   this.Images = {
     Textures : {
-      Ring : "../images/ribbon_01.png",
+      Ring : "../images/ribbon_white_d3.png",
       Ground : "../images/ground_01.png",
     }
   },
@@ -200,26 +203,26 @@ export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius, iGLTFloader) 
   }
 
   this.setupViewPoint = function () {
-    this.InternalData.Scene = new Scene();
-    this.InternalData.Camera = new PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 100000 );
+    this.InternalData.Scene = new THREE.Scene();
+    this.InternalData.Camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 100000 );
     this.InternalData.Camera.position.set( 0, 0, 20 );
     this.InternalData.Camera.lookAt( 0, 0, 0 );
 
     var wCanvasDOM = document.getElementById(this.InternalData.CanvasId);
     if (null != wCanvasDOM) {
-      this.InternalData.Renderer = new WebGLRenderer({antialias: true, canvas:  wCanvasDOM,  alpha: true });
+      this.InternalData.Renderer = new THREE.WebGLRenderer({antialias: true, canvas:  wCanvasDOM,  alpha: true });
     }
     else {
-      this.InternalData.Renderer = new WebGLRenderer({antialias: true,  alpha: true });
+      this.InternalData.Renderer = new THREE.WebGLRenderer({antialias: true,  alpha: true });
       document.body.appendChild( this.InternalData.Renderer.domElement );
     }
-    this.InternalData.Renderer.setClearColor( 0x000000, 0 );
+    this.InternalData.Renderer.setClearColor( 0x000000, 0.0 );
     this.InternalData.Renderer.setPixelRatio( window.devicePixelRatio );
 
-    this.InternalData.Renderer.toneMapping = LinearToneMapping;
+    this.InternalData.Renderer.toneMapping = THREE.LinearToneMapping;
     this.InternalData.Renderer.toneMappingExposure = Math.pow( 0.94, 5.0 );
     this.InternalData.Renderer.shadowMap.enabled = true;
-    this.InternalData.Renderer.shadowMap.type = PCFShadowMap;
+    this.InternalData.Renderer.shadowMap.type = THREE.PCFShadowMap;
 
     var resizeFunction = function(){
 
@@ -255,7 +258,7 @@ export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius, iGLTFloader) 
     this.InternalData.Scene.add( light2 );
 
     this.InternalData.Scene.add( new THREE.HemisphereLight( 0xffffbb, 0x080820, 0.01 ) );
-    this.InternalData.Scene.add(new THREE.DirectionalLight( 0xffffff, 0.1 ));
+    this.InternalData.Scene.add( new THREE.DirectionalLight( 0xffffff, 0.1 ));
     
 
     // Setup Planet     
@@ -285,7 +288,7 @@ export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius, iGLTFloader) 
 
       texture.magFilter = THREE.NearestFilter;
       texture.minFilter = THREE.NearestMipmapLinearFilter;
-      //texture.anisotropy = 16;
+      texture.anisotropy = 2;
       texture.wrapS = THREE.RepeatWrapping;
       texture.wrapT = THREE.RepeatWrapping;
 
