@@ -11,7 +11,15 @@
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/utility.js"></script>
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/WebRTI.js"></script>
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
-  <script>
+  <script type="module">
+
+    import gPlanetModel from "../modules/PlanetModel.mjs"
+    import GamePadObj from "https://wlee0515.github.io/site/modules/GamePad.mjs";
+
+
+    const gDegToRad = Math.PI/180;
+    const gRadToDeg = 180/Math.PI;
+
     var gGlobal = {
       Time : {
         LastTimeStamp : (new Date()).getTime()
@@ -67,24 +75,6 @@
       placeHolder : 0
     }
 
-    const gDegToRad = Math.PI/180;
-    const gRadToDeg = 180/Math.PI;
-
-    function convertGeoLocationToCartesian (iLatitude, iLongitude, iAltitude ) {
-      
-      var wLatitude = iLatitude*gDegToRad;
-      var wLongitude = iLongitude*gDegToRad;
-
-      var wRadius = (iAltitude + gGlobal.Planet.Radius)*(gGlobal.Planet.DrawRadius/gGlobal.Planet.Radius);
-      var wEquatorRadius = wRadius*Math.cos(wLatitude);
-      
-      return {
-        x : wEquatorRadius*Math.sin(wLongitude),
-        y : wRadius*Math.sin(wLatitude),
-        z : wEquatorRadius*Math.cos(wLongitude)
-      }
-    }
-
     function getEulerQuaternion (iLatitude, iLongitude, iRoll, iPitch, iYaw ) {
 
 			var wQuat1 = new THREE.Quaternion();
@@ -98,84 +88,6 @@
 			wQuat1.multiply(wQuat2);
       
       return wQuat1;
-    }
-
-    function addNEDVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iNEDVector) {
-      
-      var wLatitude = iLatitude*gDegToRad;
-      var wLongitude = iLongitude*gDegToRad;
-
-      wLatitude += iNEDVector[0]/gGlobal.Planet.Radius;
-
-      var wHalfPi = Math.PI/2;
-      var w2Pi = Math.PI*2;
-      
-      while (wLatitude > wHalfPi) {
-        wLatitude = Math.PI - wLatitude;
-        wLongitude += Math.PI;
-      }
-      
-      while (wLatitude < -wHalfPi) {
-        wLatitude = -Math.PI - wLatitude;
-        wLongitude += Math.PI;
-      }
-      
-      var wLatitudeRadius = Math.cos(wLatitude)*gGlobal.Planet.Radius;
-
-      wLongitude += iNEDVector[1]/wLatitudeRadius;
-
-      while (wLongitude > Math.PI) {
-        wLongitude -= w2Pi;
-      }
-      while (wLongitude < -Math.PI) {
-        wLongitude += w2Pi;
-      }
-
-      var wAltitude = iAltitude - iNEDVector[2];
-      
-      return {
-        latitude : wLatitude*gRadToDeg,
-        longitude : wLongitude*gRadToDeg,
-        altitude : wAltitude
-      }
-    }
-
-    function rotateAxis(iAngle, iAxis, iVector) {
-      var wTempVector = [iVector[0],iVector[1],iVector[2]];
-      
-      var wAxis1 = (iAxis + 1)%3;
-      var wAxis2 = (iAxis + 2)%3;
-      var wCAng = Math.cos(iAngle*gDegToRad);
-      var wSAng = Math.sin(iAngle*gDegToRad);
-      wTempVector[wAxis1] = iVector[wAxis1]*wCAng + iVector[wAxis2]*wSAng
-      wTempVector[wAxis2] = -iVector[wAxis1]*wSAng + iVector[wAxis2]*wCAng
-
-      return wTempVector;
-    }
-
-    function rotateNEDToBody( iRoll, iPitch, iYaw, iNEDVector){
-      var wBodyVector = [iNEDVector[0],iNEDVector[1],iNEDVector[2]];
-      wBodyVector = rotateAxis(iYaw,   2, wBodyVector);
-      wBodyVector = rotateAxis(iPitch, 1, wBodyVector);
-      wBodyVector = rotateAxis(iRoll,  0, wBodyVector);
-      
-      return wBodyVector;
-    }
-
-    function rotateBodyToNED( iRoll, iPitch, iYaw, iBodyVector){
-      var wNEDVector = [iBodyVector[0],iBodyVector[1],iBodyVector[2]];
-      wNEDVector = rotateAxis(-iRoll,  0, wNEDVector);
-      wNEDVector = rotateAxis(-iPitch, 1, wNEDVector);
-      wNEDVector = rotateAxis(-iYaw,   2, wNEDVector);
-      
-      return wNEDVector;
-      
-    }
-
-    function addBodyVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iRoll, iPitch, iYaw, iBodyVector) {
-      
-      var wNEDVector = rotateBodyToNED( iRoll, iPitch, iYaw, iBodyVector);
-      return addNEDVectorToGeoLocation(iLatitude, iLongitude , iAltitude , wNEDVector);
     }
 
     function EntityManager() {
@@ -246,13 +158,14 @@
 
       this.setEntityPosition = function (iEntityId, iLocation, iEuler) {
 
-        var wPosition = convertGeoLocationToCartesian(iLocation[0],iLocation[1],iLocation[2]);
+        var wPosition = gPlanetModel.convertGeoCoordinateToGeoCentric(iLocation[0],iLocation[1],iLocation[2]);
+        var wConversion = gGlobal.Planet.DrawRadius/gPlanetModel.Radius;
 
         var wEulerQuat = getEulerQuaternion(iLocation[0],iLocation[1], iEuler[0],iEuler[1],iEuler[2]);
 
         var wEntity = this.getEntity(iEntityId);
         wEntity.isUpdated = true;
-        wEntity.group.position.set(wPosition.x, wPosition.y, wPosition.z);
+        wEntity.group.position.set(wPosition.x*wConversion, wPosition.y*wConversion, wPosition.z*wConversion);
         wEntity.group.rotation.setFromQuaternion(wEulerQuat);
 
       }
@@ -570,13 +483,7 @@
       wPositionChange[1] = wPositionChange[1]*wGain[1]*wOverallGain;
       wPositionChange[2] = wPositionChange[2]*wGain[2]*wOverallGain;
 
-      var wNewVector = rotateBodyToNED(gGlobal.Ownship.eulerAngle[0]
-      , gGlobal.Ownship.eulerAngle[1]
-      , gGlobal.Ownship.eulerAngle[2]
-      , wPositionChange
-      );
-
-      var wNewPosition = addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
+      var wNewPosition = gPlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
       , gGlobal.Ownship.location[1]
       , gGlobal.Ownship.location[2]
       , gGlobal.Ownship.eulerAngle[0]
@@ -609,7 +516,7 @@
     function updateCameraLocation(iDt) {
 
       
-      var wNewPosition = addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
+      var wNewPosition = gPlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
       , gGlobal.Ownship.location[1]
       , gGlobal.Ownship.location[2]
       , gGlobal.Ownship.eulerAngle[0]
@@ -617,15 +524,15 @@
       , gGlobal.Ownship.eulerAngle[2]
       , gGlobal.ViewPoint.CameraPositionOffset);
 
-      var wPosition = convertGeoLocationToCartesian(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
+      var wPosition = gPlanetModel.convertGeoCoordinateToGeoCentric(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
       
       var wEuler = [ gGlobal.Ownship.eulerAngle[0] + gGlobal.ViewPoint.CameraAngleOffset[0]
                   ,  gGlobal.Ownship.eulerAngle[1] + gGlobal.ViewPoint.CameraAngleOffset[1]
                   ,  gGlobal.Ownship.eulerAngle[2] + gGlobal.ViewPoint.CameraAngleOffset[2]];
 
       var wEulerQuat = getEulerQuaternion(wNewPosition.latitude,wNewPosition.longitude, wEuler[0],wEuler[1],wEuler[2]);
-
-      gGlobal.ViewPoint.Camera.position.set(wPosition.x,wPosition.y,wPosition.z);
+      var wConversion = gGlobal.Planet.DrawRadius/gPlanetModel.Radius;
+      gGlobal.ViewPoint.Camera.position.set(wPosition.x*wConversion,wPosition.y*wConversion,wPosition.z*wConversion);
       gGlobal.ViewPoint.Camera.rotation.setFromQuaternion(wEulerQuat);
     }
 
@@ -704,13 +611,6 @@
       wDOM.value = "";
     }
     
-  </script>
-  <script type="module">
-
-    import {mergeObject} from "../modules/Utility.mjs";
-
-    import GamePadObj from "https://wlee0515.github.io/site/modules/GamePad.mjs";
-
     function init() {
       
       console.log = function () {
@@ -739,7 +639,6 @@
       
 
       gGlobal.socket = io("https://webrti.herokuapp.com");
-//        gGlobal.socket = io("http://localhost");
       log("SocketIO Creation Complete");
 
       gGlobal.webRTI = new WebRTI(gGlobal.socket);
