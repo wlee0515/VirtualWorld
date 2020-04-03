@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Simple Game</title>
+  <title>Virtual World ViewPoint</title>
   <script>
     var gFramePosition = 1;
   </script>
@@ -13,8 +13,8 @@
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
   <script type="module">
 
-    import gPlanetModel from "../modules/PlanetModel.mjs"
-    import GamePadObj from "https://wlee0515.github.io/site/modules/GamePad.mjs";
+    import mod_PlanetModel from "../modules/PlanetModel.mjs"
+    import mod_GamePad from "https://wlee0515.github.io/site/modules/GamePad.mjs";
 
 
     const gDegToRad = Math.PI/180;
@@ -158,8 +158,8 @@
 
       this.setEntityPosition = function (iEntityId, iLocation, iEuler) {
 
-        var wPosition = gPlanetModel.convertGeoCoordinateToGeoCentric(iLocation[0],iLocation[1],iLocation[2]);
-        var wConversion = gGlobal.Planet.DrawRadius/gPlanetModel.Radius;
+        var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(iLocation[0],iLocation[1],iLocation[2]);
+        var wConversion = mod_PlanetModel.dimensionConversion(gGlobal.Planet.DrawRadius);
 
         var wEulerQuat = getEulerQuaternion(iLocation[0],iLocation[1], iEuler[0],iEuler[1],iEuler[2]);
 
@@ -483,7 +483,7 @@
       wPositionChange[1] = wPositionChange[1]*wGain[1]*wOverallGain;
       wPositionChange[2] = wPositionChange[2]*wGain[2]*wOverallGain;
 
-      var wNewPosition = gPlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
+      var wNewPosition = mod_PlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
       , gGlobal.Ownship.location[1]
       , gGlobal.Ownship.location[2]
       , gGlobal.Ownship.eulerAngle[0]
@@ -516,7 +516,7 @@
     function updateCameraLocation(iDt) {
 
       
-      var wNewPosition = gPlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
+      var wNewPosition = mod_PlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
       , gGlobal.Ownship.location[1]
       , gGlobal.Ownship.location[2]
       , gGlobal.Ownship.eulerAngle[0]
@@ -524,14 +524,15 @@
       , gGlobal.Ownship.eulerAngle[2]
       , gGlobal.ViewPoint.CameraPositionOffset);
 
-      var wPosition = gPlanetModel.convertGeoCoordinateToGeoCentric(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
+      var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
       
       var wEuler = [ gGlobal.Ownship.eulerAngle[0] + gGlobal.ViewPoint.CameraAngleOffset[0]
                   ,  gGlobal.Ownship.eulerAngle[1] + gGlobal.ViewPoint.CameraAngleOffset[1]
                   ,  gGlobal.Ownship.eulerAngle[2] + gGlobal.ViewPoint.CameraAngleOffset[2]];
 
       var wEulerQuat = getEulerQuaternion(wNewPosition.latitude,wNewPosition.longitude, wEuler[0],wEuler[1],wEuler[2]);
-      var wConversion = gGlobal.Planet.DrawRadius/gPlanetModel.Radius;
+      
+      var wConversion = mod_PlanetModel.dimensionConversion(gGlobal.Planet.DrawRadius);
       gGlobal.ViewPoint.Camera.position.set(wPosition.x*wConversion,wPosition.y*wConversion,wPosition.z*wConversion);
       gGlobal.ViewPoint.Camera.rotation.setFromQuaternion(wEulerQuat);
     }
@@ -627,12 +628,12 @@
       
       log("Console Setup Complete");
 
-      if (null != GamePadObj){
+      if (null != mod_GamePad){
         var wJ1 = document.getElementById(gGlobal.ControlInput.OutputDiv_J1_id);
-        gGlobal.ControlInput.JoyStick1 = new GamePadObj.ThreeAxisJoystick(wJ1, true, 2);
+        gGlobal.ControlInput.JoyStick1 = new mod_GamePad.ThreeAxisJoystick(wJ1, true, 2);
 
         var wJ2 = document.getElementById(gGlobal.ControlInput.OutputDiv_J2_id);
-        gGlobal.ControlInput.JoyStick2 = new GamePadObj.ThreeAxisJoystick(wJ2, false, 7);
+        gGlobal.ControlInput.JoyStick2 = new mod_GamePad.ThreeAxisJoystick(wJ2, false, 7);
         
         log("Joystick Creation Complete");
       }

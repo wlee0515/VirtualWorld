@@ -4,6 +4,9 @@ const gDegToRad = Math.PI/180;
 const gRadToDeg = 180/Math.PI;
 const gPlanetRadius = 6371000; //m
 
+export function dimensionConversion (iDrawRadius ) {
+  return iDrawRadius/gPlanetRadius;
+}
 
 export function convertGeoCoordinateToGeoCentric (iLatitude, iLongitude, iAltitude ) {
       
@@ -71,6 +74,7 @@ export function addBodyVectorToGeoLocation (iLatitude, iLongitude , iAltitude, i
 
 export default {
   Radius : gPlanetRadius,
+  dimensionConversion : dimensionConversion,
   convertGeoCoordinateToGeoCentric : convertGeoCoordinateToGeoCentric,
   addNEDVectorToGeoLocation : addNEDVectorToGeoLocation,
   addBodyVectorToGeoLocation : addBodyVectorToGeoLocation
