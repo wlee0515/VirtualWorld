@@ -13,9 +13,9 @@
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
   <script type="module">
 
-    import mod_PlanetModel from "../modules/PlanetModel.mjs"
+    import mod_PlanetModel from "../modules/PlanetModel.mjs";
+    import mod_EntityManager from "../modules/EntityManager.mjs";
     import mod_GamePad from "https://wlee0515.github.io/site/modules/GamePad.mjs";
-
 
     const gDegToRad = Math.PI/180;
     const gRadToDeg = 180/Math.PI;
@@ -90,123 +90,102 @@
       return wQuat1;
     }
 
-    function EntityManager() {
-      this.EntityList = {};
-      
-      this.generateEntityIdString = function (iSource, id ) {
-        return iSource + ' - ' + id;
+    function entityCreationFunction(iEntityId, iEntity) {
+      var wGeometry = new THREE.BoxGeometry(1, 1, 1);
+      var wMaterial = new THREE.MeshLambertMaterial({ color: hashCode(iEntityId) });
+      var wMesh = new THREE.Mesh(wGeometry, wMaterial);
+      var wGroup = new THREE.Group();
+      wGroup.add(wMesh);
+      gGlobal.ViewPoint.Scene.add(wGroup);
+
+      iEntity.metadata = {
+        geometry: wGeometry,
+        material: wMaterial,
+        mesh: wMesh,
+        model: null,
+        group: wGroup,
+        modelPath: "",
+        modelRotation: [0.0, 0.0, 0.0],
+        modelOffset: [0.0, 0.0, 0.0],
+        modelScale: [1.0, 1.0, 1.0]
       }
 
-      this.createEntity = function (iEntityId) {
-        if (null == this.EntityList[iEntityId]) {
-          var wGeometry = new THREE.BoxGeometry(1, 1, 1);
-          var wMaterial = new THREE.MeshLambertMaterial({ color: hashCode(iEntityId) });
-          var wMesh = new THREE.Mesh(wGeometry, wMaterial);
-          var wGroup =  new THREE.Group();
-          wGroup.add(wMesh);
-          gGlobal.ViewPoint.Scene.add(wGroup);
+    }
 
-          this.EntityList[iEntityId] = {
-            isUpdated : false,
-            geometry : wGeometry,
-            material : wMaterial,
-            mesh : wMesh,
-            model : null,
-            group : wGroup,
-            modelPath : "",
-            modelRotation: [0.0,0.0,0.0],
-            modelOffset: [0.0,0.0,0.0],
-            modelScale: [1.0,1.0,1.0]
-          }
-        }
-      }
-      
-      this.removeEntity = function (iEntityId) {
-        var wEntity = this.EntityList[iEntityId];
-        if (null != wEntity) {
+    function entityDeletionFunction(iEntityId, iEntity) {
+
+      gGlobal.ViewPoint.Scene.remove( iEntity.metadata.mesh );
+      iEntity.metadata.geometry.dispose();
+      iEntity.metadata.material.dispose();
           
-          gGlobal.ViewPoint.Scene.remove( wEntity.mesh );
-          wEntity.geometry.dispose();
-          wEntity.material.dispose();
+      if (null != iEntity.metadata.group) {
+        gGlobal.ViewPoint.Scene.remove( iEntity.metadata.group );
+      }
+    }
+
+
+    function entitySetPositionFunction(iEntity, iLocation, iEuler) {
+  
+      var wConversion = mod_PlanetModel.dimensionConversion(gGlobal.Planet.DrawRadius);
+      var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(iLocation[0],iLocation[1],iLocation[2]);
+      var wDrawPosition = [wPosition.x*wConversion, wPosition.y*wConversion, wPosition.z*wConversion]
+
+      var wEulerQuat = getEulerQuaternion(iLocation[0],iLocation[1], iEuler[0],iEuler[1],iEuler[2]);
+
+      iEntity.metadata.group.position.set(wDrawPosition[0],wDrawPosition[1], wDrawPosition[2]);
+      iEntity.metadata.group.rotation.setFromQuaternion(wEulerQuat);
+    }
+
+    function compareVector(iVector1, iVector2) {
+      if (iVector1.length == iVector2.length) {
+        for(var wi = 0; wi < iVector1.length; ++wi) {
+          if (iVector1[wi] != iVector1[wi]) {
+            return false;
+          }
+        }
+        return true;
+      }
+      return false;
+    }
+
+    function setEntityModel (iEntityId, iModelPath, iRotation, iOffset, iScale) {
+      var wEntity = gGlobal.EntityManger.getEntity(iEntityId)
+
+      if (compareVector(wEntity.metadata.modelRotation, iRotation )) {
+        wEntity.metadata.modelRotation = [iRotation[0],iRotation[1],iRotation[2]];
+        if (null != wEntity.model){
+          wEntity.metadata.model.rotation.set(
+            wEntity.metadata.modelRotation[0]*gDegToRad,
+            wEntity.metadata.modelRotation[1]*gDegToRad,
+            wEntity.metadata.modelRotation[2]*gDegToRad);
           
-          if (null != wEntity.group) {
-            gGlobal.ViewPoint.Scene.remove( wEntity.group );
-          }
-
-          delete this.EntityList[iEntityId];
         }
       }
 
+      if (compareVector(wEntity.metadata.modelOffset, iOffset )) {
+        wEntity.metadata.modelOffset = [iOffset[0],iOffset[1],iOffset[2]];
+        if (null != wEntity.model){
+          wEntity.metadata.model.position.set(
+            wEntity.metadata.modelOffset[0],
+            wEntity.metadata.modelOffset[1],
+            wEntity.metadata.modelOffset[2]);
+        }
+      }
       
-      this.getEntity = function (iEntityId) {
-        this.createEntity(iEntityId);
-        return this.EntityList[iEntityId];
-      }
-
-      this.removeNoneUpdated = function() {
-        var wEntries = Object.entries(this.EntityList);
-        for (var wi=0; wi < wEntries.length; ++wi) {
-          var wEntry = wEntries[wi];
-          if (true == wEntry[1].isUpdated) {
-            wEntry[1].isUpdated = false;
-          }
-          else {
-            this.removeEntity(wEntry[0]);
-          }
+      if (compareVector(wEntity.metadata.modelScale, iOffset )) {
+        wEntity.metadata.modelScale = [iScale[0],iScale[1],iScale[2]];
+        if (null != wEntity.model){
+          
+          var wModelScale = mod_PlanetModel.dimensionConversion( gGlobal.Planet.DrawRadius);
+          wEntity.metadata.model.scale.set(
+            wEntity.metadata.modelScale[0]*wModelScale,
+            wEntity.metadata.modelScale[1]*wModelScale,
+            wEntity.metadata.modelScale[2]*wModelScale);
         }
       }
-
-      this.setEntityPosition = function (iEntityId, iLocation, iEuler) {
-
-        var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(iLocation[0],iLocation[1],iLocation[2]);
-        var wConversion = mod_PlanetModel.dimensionConversion(gGlobal.Planet.DrawRadius);
-
-        var wEulerQuat = getEulerQuaternion(iLocation[0],iLocation[1], iEuler[0],iEuler[1],iEuler[2]);
-
-        var wEntity = this.getEntity(iEntityId);
-        wEntity.isUpdated = true;
-        wEntity.group.position.set(wPosition.x*wConversion, wPosition.y*wConversion, wPosition.z*wConversion);
-        wEntity.group.rotation.setFromQuaternion(wEulerQuat);
-
-      }
-
-      this.setEntityModel = function (iEntityId, iModelPath, iRotation, iOffset, iScale) {
-        
-        var wEntity = this.EntityList[iEntityId];
-        if (null == wEntity) {
-          return;
-        }
-
-        wEntity.isUpdated = true;
-        
-        if ((wEntity.modelRotation[0] != iRotation[0]) || (wEntity.modelRotation[1] != iRotation[1]) || (wEntity.modelRotation[2] != iRotation[2]) ) {
-          wEntity.modelRotation = [iRotation[0],iRotation[1],iRotation[2]];
-          if (null != wEntity.model){
-            wEntity.model.rotation.set(wEntity.modelRotation[0]*gDegToRad, wEntity.modelRotation[1]*gDegToRad, wEntity.modelRotation[2]*gDegToRad);
-          }
-        }
-        
-        if ((wEntity.modelOffset[0] != iOffset[0]) || (wEntity.modelOffset[1] != iOffset[1]) || (wEntity.modelOffset[2] != iOffset[2]) ) {
-          wEntity.modelOffset = [iOffset[0],iOffset[1],iOffset[2]];
-          if (null != wEntity.model){
-            wEntity.model.position.set(wEntity.modelOffset[0], wEntity.modelOffset[1], wEntity.modelOffset[2]);
-          }
-        }
-
-        if ((wEntity.modelScale[0] != iScale[0]) || (wEntity.modelScale[1] != iScale[1]) || (wEntity.modelScale[2] != iScale[2]) ) {
-          wEntity.modelScale = [iScale[0],iScale[1],iScale[2]];
-          if (null != wEntity.model){
-            var wModelScale = gGlobal.Planet.DrawRadius/gGlobal.Planet.Radius;
-            wEntity.model.scale.set(wEntity.modelScale[0]*wModelScale, wEntity.modelScale[1]*wModelScale, wEntity.modelScale[2]*wModelScale);
-          }
-        }
-
-        if (wEntity.modelPath == iModelPath) {
-          return;
-        }
-        
-        var wEntityId = iEntityId;
-        wEntity.modelPath = iModelPath;
+      
+      if (wEntity.metadata.modelPath != iModelPath) {
+        wEntity.metadata.modelPath = iModelPath;
 
         gGlobal.ViewPoint.LoaderList["gltf"].load(iModelPath, function (iModelData) {
           if (0 != iModelData.animations.length) {
@@ -216,32 +195,36 @@
             gGlobal.ViewPoint.MixerList.push(wMixer);
           }
 
-          var wEntity = this.EntityList[wEntityId];
+          if (null != this.metadata.model) {
+            this.metadata.model.dispose();
+          }
 
-          if (null != wEntity) {
-
-            if (null != wEntity.model) {
-              wEntity.model.dispose();
-            }
-
-            wEntity.model = iModelData.scene;
+          this.metadata.model = iModelData.scene;
             
-            var wModelScale = gGlobal.Planet.DrawRadius/gGlobal.Planet.Radius;
+          this.metadata.model.rotation.set(
+            this.metadata.modelRotation[0]*gDegToRad,
+            this.metadata.modelRotation[1]*gDegToRad,
+            this.metadata.modelRotation[2]*gDegToRad);
 
-            wEntity.model.rotation.set(wEntity.modelRotation[0]*gDegToRad, wEntity.modelRotation[1]*gDegToRad, wEntity.modelRotation[2]*gDegToRad);
-            wEntity.model.position.set(wEntity.modelOffset[0], wEntity.modelOffset[1], wEntity.modelOffset[2]);
-            wEntity.model.scale.set(wEntity.modelScale[0]*wModelScale, wEntity.modelScale[1]*wModelScale, wEntity.modelScale[2]*wModelScale);
+          this.metadata.model.position.set(
+            this.metadata.modelOffset[0],
+            this.metadata.modelOffset[1],
+            this.metadata.modelOffset[2]);
 
-            wEntity.group.add(wEntity.model);
-            wEntity.mesh.visible = false;
-          }
-          else {
-            iModelData.dispose();
-          }
-        }.bind(this))
+
+          var wModelScale = mod_PlanetModel.dimensionConversion( gGlobal.Planet.DrawRadius);
+          this.metadata.model.scale.set(
+            this.metadata.modelScale[0]*wModelScale,
+            this.metadata.modelScale[1]*wModelScale,
+            this.metadata.modelScale[2]*wModelScale);
+            
+          this.metadata.group.add(this.metadata.model);
+          this.metadata.mesh.visible = false;
+
+        }.bind(wEntity))
+
       }
     }
-
 
     function setupViewPoint() {
 			gGlobal.ViewPoint.Scene = new THREE.Scene();
@@ -423,15 +406,7 @@
           wRingContainer.scale.x = wScale;
           wPlanetGroup.add(wRingContainer);
         }
-        
-        //gGlobal.ViewPoint.x_rotateElements.push([wRing,0.005]);
-        //wPlanetGroup.add( wRing );
       });
-      wRingTexture.anisotropy = gGlobal.ViewPoint.Renderer.getMaxAnisotropy();
-      
-      //loadGLTF("../../thirdparty/sampleGLFT/2.0/VC/glTF/VC.gltf")
-      //loadGLTF('https://threejsfundamentals.org/threejs/resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf')
-      
     }
 
     function updateScene(iDt) {
@@ -495,22 +470,6 @@
       gGlobal.Ownship.location[1] = wNewPosition.longitude;
       gGlobal.Ownship.location[2] = wNewPosition.altitude;
 
-/*
-      
-  			gGlobal.ViewPoint.Camera.rotation.y -= wJ2_State.x*0.1;
-	  		gGlobal.ViewPoint.Camera.rotation.x = wJ2_State.y*0.1;
-		  	gGlobal.ViewPoint.Camera.rotation.z = wJ2_State.z*0.1;
-        gGlobal.ViewPoint.Camera.position.x += wJ1_State.x*5;
-  			gGlobal.ViewPoint.Camera.position.y += wJ1_State.y*5;
-      	gGlobal.ViewPoint.Camera.position.z += wJ1_State.z*5;
-  */      
-/*
-      wCube = gGlobal.ViewPoint.Scene.getObjectByName( "Planet", true );
-			wCube.rotation.y += wJ2_State.x*0.1;
-			wCube.rotation.x += wJ2_State.y*0.1;
-      wCube.rotation.z += wJ2_State.z*0.1;
-      */
-
     }
 
     function updateCameraLocation(iDt) {
@@ -553,7 +512,7 @@
       
       var wEntityId = gGlobal.EntityManger.generateEntityIdString("self", "Ownship" );
       gGlobal.EntityManger.setEntityPosition(wEntityId, gGlobal.Ownship.location,  gGlobal.Ownship.eulerAngle);
-      gGlobal.EntityManger.setEntityModel(wEntityId, gGlobal.Ownship.modelPath, gGlobal.Ownship.modelRotation, gGlobal.Ownship.modelOffset,  gGlobal.Ownship.modelScale)
+      setEntityModel(wEntityId, gGlobal.Ownship.modelPath, gGlobal.Ownship.modelRotation, gGlobal.Ownship.modelOffset,  gGlobal.Ownship.modelScale)
 
       gGlobal.webRTI.setObject("EntityManager", "EntityList", wEntityList);
 
@@ -570,7 +529,7 @@
             var wEntity = wRemoteList[wj];
             var wEntityId = gGlobal.EntityManger.generateEntityIdString(wEntries[wi][0],wEntity.id );
             gGlobal.EntityManger.setEntityPosition(wEntityId, wEntity.location, wEntity.eulerAngle);
-            gGlobal.EntityManger.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
+            setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
             
           }     
 
@@ -645,7 +604,11 @@
       gGlobal.webRTI = new WebRTI(gGlobal.socket);
       log("WebRTI Federate Creation Complete");
 
-      gGlobal.EntityManger = new EntityManager();
+      gGlobal.EntityManger = new mod_EntityManager.EntityManager();
+      gGlobal.EntityManger.EntityCreationFunction = entityCreationFunction;
+      gGlobal.EntityManger.EntityDeletionFunction = entityDeletionFunction;
+      gGlobal.EntityManger.EntitySetPositionFunction = entitySetPositionFunction;
+      
       log("Entity Manager Creation Complete");
 
       setupViewPoint();
