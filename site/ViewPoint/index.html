@@ -1,11 +1,9 @@
 <!doctype html>
 <html>
+
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Virtual World ViewPoint</title>
-  <script>
-    var gFramePosition = 1;
-  </script>
   <script type="text/javascript" src="../javascript/threejs/three.js"></script>
   <script type="text/javascript" src="../javascript/threejs/js/loaders/GLTFLoader.js"></script>
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/utility.js"></script>
@@ -13,458 +11,79 @@
   <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
   <script type="module">
 
-    import mod_PlanetModel from "../modules/PlanetModel.mjs";
     import mod_EntityManager from "../modules/EntityManager.mjs";
+    import mod_PlanetModel from "../modules/PlanetModel.mjs";
+    import mod_PlanetRenderer from "../modules/PlanetRenderer.mjs";
     import mod_GamePad from "https://wlee0515.github.io/site/modules/GamePad.mjs";
 
-    const gDegToRad = Math.PI/180;
-    const gRadToDeg = 180/Math.PI;
+    const gDegToRad = Math.PI / 180;
+    const gRadToDeg = 180 / Math.PI;
 
     var gGlobal = {
-      Time : {
-        LastTimeStamp : (new Date()).getTime()
-      },
-      
-      ControlInput : {
-        JoyStick1 : null,
-        JoyStick2 : null,
-        OutputDiv_J1_id : "id_JoyStick_1",
-        OutputDiv_J2_id : "id_JoyStick_2",
+      Time: {
+        LastTimeStamp: (new Date()).getTime()
       },
 
-      ViewPoint : {
-        CanvasId : "id_OutputCanvas",
-        Scene : null,
-  			Camera : null,
-  			CameraPositionOffset : [-500.0,0.0,-500.0],
-  			CameraAngleOffset : [0.0,-20.0,0.0],
-        Renderer : null,
-        LoaderList : [],
-        MixerList : [],
-        x_rotateElements : [],
-        y_rotateElements : [],
-        z_rotateElements : []
+      ControlInput: {
+        JoyStick1: null,
+        JoyStick2: null,
+        OutputDiv_J1_id: "id_JoyStick_1",
+        OutputDiv_J2_id: "id_JoyStick_2",
       },
 
-      Planet : {
-        Radius : 6371000,
-        DrawRadius : 5000,
+      ViewPoint: {
+        CanvasId: "id_OutputCanvas",
+        DrawRadius: 5000,
+        PlanetRenderer: null,
       },
 
-      Ownship : {
-        location : [0.0,0.0,0.0],
-        eulerAngle : [0.0,0.0,0.0],
-        modelPath : "https://wlee0515.github.io/site/pages/SimpleGame/Horse.glb",
-        modelRotation : [0.0,180.0,0.0],
-        modelOffset : [0.0,-0.05,0.0],
-        modelScale : [1.0,1.0,1.0],
-        
-      },
+      Ownship: {
+        location: [0.0, 0.0, 0.0],
+        eulerAngle: [0.0, 0.0, 0.0],
+        modelPath: "https://wlee0515.github.io/site/pages/SimpleGame/Horse.glb",
+        modelRotation: [0.0, 180.0, 0.0],
+        modelOffset: [0.0, -0.05, 0.0],
+        modelScale: [1.0, 1.0, 1.0],
 
-      Images : {
-        Textures : {
-          Ring : "../images/ribbon_01.png",
-          Ground : "../images/ground_01.png",
-        }
       },
 
       socket: null,
-      webRTI : null,
-
-      EntityManager : null,
-      placeHolder : 0
+      webRTI: null,
+      EntityManager: null,
+      placeHolder: 0
     }
 
-    function getEulerQuaternion (iLatitude, iLongitude, iRoll, iPitch, iYaw ) {
-
-			var wQuat1 = new THREE.Quaternion();
-			var wRefEuler = new THREE.Euler(-iLatitude*gDegToRad + Math.PI/2, iLongitude*gDegToRad, 0, "ZYX" );
-			wQuat1.setFromEuler(wRefEuler);
-
-			var wQuat2 = new THREE.Quaternion();
-			var wLocalEuler = new THREE.Euler( iPitch*gDegToRad, -iYaw*gDegToRad, -iRoll*gDegToRad, "YXZ" );
-			wQuat2.setFromEuler(wLocalEuler);
-
-			wQuat1.multiply(wQuat2);
-      
-      return wQuat1;
-    }
-
-    function entityCreationFunction(iEntityId, iEntity) {
-      var wGeometry = new THREE.BoxGeometry(1, 1, 1);
-      var wMaterial = new THREE.MeshLambertMaterial({ color: hashCode(iEntityId) });
-      var wMesh = new THREE.Mesh(wGeometry, wMaterial);
-      var wGroup = new THREE.Group();
-      wGroup.add(wMesh);
-      gGlobal.ViewPoint.Scene.add(wGroup);
-
-      iEntity.metadata = {
-        geometry: wGeometry,
-        material: wMaterial,
-        mesh: wMesh,
-        model: null,
-        group: wGroup,
-        modelPath: "",
-        modelRotation: [0.0, 0.0, 0.0],
-        modelOffset: [0.0, 0.0, 0.0],
-        modelScale: [1.0, 1.0, 1.0]
-      }
-
-    }
-
-    function entityDeletionFunction(iEntityId, iEntity) {
-
-      gGlobal.ViewPoint.Scene.remove( iEntity.metadata.mesh );
-      iEntity.metadata.geometry.dispose();
-      iEntity.metadata.material.dispose();
-          
-      if (null != iEntity.metadata.group) {
-        gGlobal.ViewPoint.Scene.remove( iEntity.metadata.group );
-      }
-    }
-
-
-    function entitySetPositionFunction(iEntity, iLocation, iEuler) {
-  
-      var wConversion = mod_PlanetModel.dimensionConversion(gGlobal.Planet.DrawRadius);
-      var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(iLocation[0],iLocation[1],iLocation[2]);
-      var wDrawPosition = [wPosition.x*wConversion, wPosition.y*wConversion, wPosition.z*wConversion]
-
-      var wEulerQuat = getEulerQuaternion(iLocation[0],iLocation[1], iEuler[0],iEuler[1],iEuler[2]);
-
-      iEntity.metadata.group.position.set(wDrawPosition[0],wDrawPosition[1], wDrawPosition[2]);
-      iEntity.metadata.group.rotation.setFromQuaternion(wEulerQuat);
-    }
-
-    function compareVector(iVector1, iVector2) {
-      if (iVector1.length == iVector2.length) {
-        for(var wi = 0; wi < iVector1.length; ++wi) {
-          if (iVector1[wi] != iVector1[wi]) {
-            return false;
-          }
-        }
-        return true;
-      }
-      return false;
-    }
-
-    function setEntityModel (iEntityId, iModelPath, iRotation, iOffset, iScale) {
-      var wEntity = gGlobal.EntityManger.getEntity(iEntityId)
-
-      if (compareVector(wEntity.metadata.modelRotation, iRotation )) {
-        wEntity.metadata.modelRotation = [iRotation[0],iRotation[1],iRotation[2]];
-        if (null != wEntity.model){
-          wEntity.metadata.model.rotation.set(
-            wEntity.metadata.modelRotation[0]*gDegToRad,
-            wEntity.metadata.modelRotation[1]*gDegToRad,
-            wEntity.metadata.modelRotation[2]*gDegToRad);
-          
-        }
-      }
-
-      if (compareVector(wEntity.metadata.modelOffset, iOffset )) {
-        wEntity.metadata.modelOffset = [iOffset[0],iOffset[1],iOffset[2]];
-        if (null != wEntity.model){
-          wEntity.metadata.model.position.set(
-            wEntity.metadata.modelOffset[0],
-            wEntity.metadata.modelOffset[1],
-            wEntity.metadata.modelOffset[2]);
-        }
-      }
-      
-      if (compareVector(wEntity.metadata.modelScale, iOffset )) {
-        wEntity.metadata.modelScale = [iScale[0],iScale[1],iScale[2]];
-        if (null != wEntity.model){
-          
-          var wModelScale = mod_PlanetModel.dimensionConversion( gGlobal.Planet.DrawRadius);
-          wEntity.metadata.model.scale.set(
-            wEntity.metadata.modelScale[0]*wModelScale,
-            wEntity.metadata.modelScale[1]*wModelScale,
-            wEntity.metadata.modelScale[2]*wModelScale);
-        }
-      }
-      
-      if (wEntity.metadata.modelPath != iModelPath) {
-        wEntity.metadata.modelPath = iModelPath;
-
-        gGlobal.ViewPoint.LoaderList["gltf"].load(iModelPath, function (iModelData) {
-          if (0 != iModelData.animations.length) {
-            var wMixer = new THREE.AnimationMixer(iModelData.scene);
-            var wAction = wMixer.clipAction(iModelData.animations[0]);
-            wAction.play();
-            gGlobal.ViewPoint.MixerList.push(wMixer);
-          }
-
-          if (null != this.metadata.model) {
-            this.metadata.model.dispose();
-          }
-
-          this.metadata.model = iModelData.scene;
-            
-          this.metadata.model.rotation.set(
-            this.metadata.modelRotation[0]*gDegToRad,
-            this.metadata.modelRotation[1]*gDegToRad,
-            this.metadata.modelRotation[2]*gDegToRad);
-
-          this.metadata.model.position.set(
-            this.metadata.modelOffset[0],
-            this.metadata.modelOffset[1],
-            this.metadata.modelOffset[2]);
-
-
-          var wModelScale = mod_PlanetModel.dimensionConversion( gGlobal.Planet.DrawRadius);
-          this.metadata.model.scale.set(
-            this.metadata.modelScale[0]*wModelScale,
-            this.metadata.modelScale[1]*wModelScale,
-            this.metadata.modelScale[2]*wModelScale);
-            
-          this.metadata.group.add(this.metadata.model);
-          this.metadata.mesh.visible = false;
-
-        }.bind(wEntity))
-
-      }
-    }
-
-    function setupViewPoint() {
-			gGlobal.ViewPoint.Scene = new THREE.Scene();
-			gGlobal.ViewPoint.Camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 100000 );
-			gGlobal.ViewPoint.Camera.position.set( 0, 0, 20 );
-			gGlobal.ViewPoint.Camera.lookAt( 0, 0, 0 );
-
-			var wCanvasDOM = document.getElementById(gGlobal.ViewPoint.CanvasId);
-			if (null != wCanvasDOM) {
-				gGlobal.ViewPoint.Renderer = new THREE.WebGLRenderer({antialias: true, canvas:  wCanvasDOM,  alpha: true });
-			}
-			else {
-				gGlobal.ViewPoint.Renderer = new THREE.WebGLRenderer({antialias: true,  alpha: true });
-				document.body.appendChild( gGlobal.ViewPoint.Renderer.domElement );
-      }
-      gGlobal.ViewPoint.Renderer.setClearColor( 0x000000, 0 );
-			gGlobal.ViewPoint.Renderer.setPixelRatio( window.devicePixelRatio );
-
-      gGlobal.ViewPoint.Renderer.toneMapping = THREE.LinearToneMapping;
-      gGlobal.ViewPoint.Renderer.toneMappingExposure = Math.pow( 0.94, 5.0 );
-      gGlobal.ViewPoint.Renderer.shadowMap.enabled = true;
-      gGlobal.ViewPoint.Renderer.shadowMap.type = THREE.PCFShadowMap;
-
-      var wGLTFloader = new THREE.GLTFLoader();
-      wGLTFloader.crossOrigin = true;
-      gGlobal.ViewPoint.LoaderList["gltf"] = wGLTFloader;
-
-      var resizeFunction = function(){
-
-				if (null != gGlobal.ViewPoint.Renderer) {
-					var wWidth = window.innerWidth;
-					var wHeight = window.innerHeight;
-					var wCanvasDOM = document.getElementById(gGlobal.ViewPoint.CanvasId);
-					if (null != wCanvasDOM) {
-					  wWidth = wCanvasDOM.width = wCanvasDOM.parentNode.clientWidth;
-					  wHeight = wCanvasDOM.height = wCanvasDOM.parentNode.clientHeight;
-					}
-					gGlobal.ViewPoint.Renderer.setSize(wWidth, wHeight);
-	
-					if (null != gGlobal.ViewPoint.Camera) {
-						gGlobal.ViewPoint.Camera.aspect = wWidth / wHeight;
-						gGlobal.ViewPoint.Camera.updateProjectionMatrix();
-					}
-				}
-      }
-      
-      resizeFunction();
-      window.addEventListener("resize", resizeFunction);
-    }
-
-    function loadGLTF(iPath) {
-      gGlobal.ViewPoint.LoaderList["gltf"].load( iPath, function ( iModelData ) {
-    /*    
-        iModelData.animations; // Array<THREE.AnimationClip>
-        iModelData.scene; // THREE.Scene
-		    iModelData.scenes; // Array<THREE.Scene>
-        iModelData.cameras; // Array<THREE.Camera>
-        iModelData.asset; // Object
-  */
-        if (0 != iModelData.animations.length) {
-          var wMixer = new THREE.AnimationMixer( iModelData.scene );
-	        var wAction = wMixer.clipAction( iModelData.animations[ 0 ] );
-          wAction.play();
-          gGlobal.ViewPoint.MixerList.push(wMixer);
-        }
-  
-        var wModel = iModelData.scene;
-//        wModel.position.set(-1.0, -10.5, -1.0);
-        wModel.position.set(0.0, 0.0, 0.0);
-        wModel.rotation.set(0, 0, 0);
-//        wModel.scale.set(0.05,0.05,0.05);
-
-        var wGroup = new THREE.Group();
-        wGroup.add( wModel );
-        wGroup.position.set(-5.0, 0, 0.0);
-        wGroup.name = "Model";
-        gGlobal.ViewPoint.Scene.add( wGroup );
-
-      });
-    }
-
-    function setupScene() {
-      
-      var light = new THREE.PointLight( 0xffffcc, 10, 50, 2 );
-      light.position.set( 4, 30, -20 );
-      gGlobal.ViewPoint.Scene.add( light );
-
-      var light2 = new THREE.AmbientLight( 0x20202A, 10 );
-      light2.position.set( 30, -10, 30 );
-      gGlobal.ViewPoint.Scene.add( light2 );
-
-      gGlobal.ViewPoint.Scene.add( new THREE.HemisphereLight( 0xffffbb, 0x080820, 0.01 ) );
-      gGlobal.ViewPoint.Scene.add(new THREE.DirectionalLight( 0xffffff, 0.1 ));
-      
-
-      // Setup Planet     
-      
-      var wPlanetGroup = new THREE.Group();
-      wPlanetGroup.name = "Planet";
-      gGlobal.ViewPoint.Scene.add( wPlanetGroup );
-      
-      var wPlanetTexture = new THREE.TextureLoader().load(gGlobal.Images.Textures.Ground);
-      wPlanetTexture.magFilter = THREE.NearestFilter;
-      wPlanetTexture.minFilter = THREE.NearestMipmapLinearFilter;
-      //wPlanetTexture.anisotropy = 16;
-      wPlanetTexture.wrapS = THREE.RepeatWrapping;
-      wPlanetTexture.wrapT = THREE.RepeatWrapping;
-      wPlanetTexture.repeat.set( 360*60/5, 180*60/5 );
-
-      var wPlanetGeometry = new THREE.SphereGeometry( gGlobal.Planet.DrawRadius, 360, 180 );
-      var wPlanetMaterial = new THREE.MeshLambertMaterial( {map: wPlanetTexture , transparent: true , opacity: 1.0 ,color: 0xffffff, depthTest: true } );
-      var wPlanet = new THREE.Mesh( wPlanetGeometry, wPlanetMaterial );
-      wPlanet.name = "PlanetWater";
-      wPlanetGroup.add( wPlanet );
-
-
-      // load a texture, set wrap mode to repeat
-      //var wRingTexture = new THREE.TextureLoader().load( "./images/ribbon.png" );
-      var wRingTexture = new THREE.TextureLoader().load( gGlobal.Images.Textures.Ring, function ( texture ) {
-
-        texture.magFilter = THREE.NearestFilter;
-        texture.minFilter = THREE.NearestMipmapLinearFilter;
-        //texture.anisotropy = 16;
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-
-        var wPixelPerMeter = 20;
-        var wRibbonRadius = gGlobal.Planet.DrawRadius + 150;
-        var wRibbonLength = wRibbonRadius*2*Math.PI;
-
-        var wImageWidth = texture.image.width / wPixelPerMeter;
-        var wImageHeight = texture.image.height / wPixelPerMeter;
-        var wVCount = 1;
-        var wHCount = Math.ceil(wRibbonLength/(wImageWidth));
-        var wScale = (wRibbonLength/wHCount)/wImageWidth;
-        var wRibbonWidth = wScale*wVCount*wImageHeight;
-        texture.repeat.set( -wHCount, wVCount );
-
-        var points = [];
-        for (var i = -1; i <= 1; i++) {
-          points.push(new THREE.Vector2(wRibbonRadius, i * wRibbonWidth / 2));
-        }
-        
-        var wRingGeometry = new THREE.LatheGeometry( points , 360);
-        var wRingMaterial = new THREE.MeshBasicMaterial( { map: wRingTexture  , transparent: true , opacity: 1.0 ,color: 0xffffff, depthTest: true , side : THREE.DoubleSide} ); 
-
-        
-        var wShiftArray = [
-          [0.0,0.0,0.0], 
-          [0.0,0.0,5.0], 
-          [0.0,30.0,10.0],
-          [0.0,60.0,15.0], 
-          [0.0,90.0,20.0],
-          [0.0,120.0,25.0], 
-          [0.0,150.0,30.0],
-          [0.0,180.0,35.0], 
-          [0.0,210.0,45.0], 
-          [0.0,240.0,50.0], 
-          [0.0,270.0,55.0], 
-          [0.0,300.0,60.0], 
-          [0.0,330.0,65.0], 
-     //     [0.0,180.0,5.0],
-       //   [0.0,240.0,-5.0], 
-      //    [0.0,90.0,-45.0], 
-      //    [0.0,0.0,90.0],   
-      //    [0.0,90.0,90.0],  
-        ]
-        for (var wi = 0; wi < wShiftArray.length; ++wi) {
-          var wRing = new THREE.Mesh(wRingGeometry, wRingMaterial);
-          gGlobal.ViewPoint.y_rotateElements.push([wRing, Math.pow(-1, wi) * 0.005]);
-            
-          var wRingContainer = new THREE.Group();
-          wRingContainer.add(wRing);
-          wRingContainer.rotation.x = wShiftArray[wi][0]*gDegToRad;
-          wRingContainer.rotation.y = wShiftArray[wi][1]*gDegToRad;
-          wRingContainer.rotation.z = wShiftArray[wi][2]*gDegToRad;
-          wScale = Math.pow(-1, wi)*0.001 + 1;
-          wRingContainer.scale.z = wScale;
-          wRingContainer.scale.x = wScale;
-          wPlanetGroup.add(wRingContainer);
-        }
-      });
-    }
-
-    function updateScene(iDt) {
-      
-      for (var wi = 0; wi < gGlobal.ViewPoint.MixerList.length; ++wi) {
-        gGlobal.ViewPoint.MixerList[wi].update(iDt);
-      }
-      
-      for (var wi = 0; wi < gGlobal.ViewPoint.MixerList.length; ++wi) {
-        gGlobal.ViewPoint.MixerList[wi].update(iDt);
-      }
-      
-      for (var wi = 0; wi < gGlobal.ViewPoint.x_rotateElements.length; ++wi) {
-        gGlobal.ViewPoint.x_rotateElements[wi][0].rotation.x += iDt*gGlobal.ViewPoint.x_rotateElements[wi][1];        
-      }
-      
-      for (var wi = 0; wi < gGlobal.ViewPoint.y_rotateElements.length; ++wi) {
-        gGlobal.ViewPoint.y_rotateElements[wi][0].rotation.y += iDt*gGlobal.ViewPoint.y_rotateElements[wi][1];        
-      }
-      
-      for (var wi = 0; wi < gGlobal.ViewPoint.z_rotateElements.length; ++wi) {
-        gGlobal.ViewPoint.z_rotateElements[wi][0].rotation.z += iDt*gGlobal.ViewPoint.z_rotateElements[wi][1];        
-      }
-
-			gGlobal.ViewPoint.Renderer.render(gGlobal.ViewPoint.Scene, gGlobal.ViewPoint.Camera);
-    }
-    
     function updateJoystick(iDt) {
-      
-      var wJ1_State = { x:0,y:0,z:0};
-      var wJ2_State = { x:0,y:0,z:0};
+
+      var wJ1_State = { x: 0, y: 0, z: 0 };
+      var wJ2_State = { x: 0, y: 0, z: 0 };
 
       if (null != gGlobal.ControlInput.JoyStick1) {
         wJ1_State = gGlobal.ControlInput.JoyStick1.getAxisPosition();
       }
-      
+
       if (null != gGlobal.ControlInput.JoyStick2) {
         wJ2_State = gGlobal.ControlInput.JoyStick2.getAxisPosition();
       }
-      
-      gGlobal.Ownship.eulerAngle[0] = wJ2_State.z*90;
-      gGlobal.Ownship.eulerAngle[1] = wJ2_State.y*90;
+
+      gGlobal.Ownship.eulerAngle[0] = wJ2_State.z * 90;
+      gGlobal.Ownship.eulerAngle[1] = wJ2_State.y * 90;
       gGlobal.Ownship.eulerAngle[2] += wJ2_State.x;
 
       var wOverallGain = 1;
-      var wGain = [100.0,100.0,100.0];
-      var wPositionChange = [wJ1_State.y , wJ1_State.x, wJ1_State.z];
-      wPositionChange[0] = wPositionChange[0]*wGain[0]*wOverallGain;
-      wPositionChange[1] = wPositionChange[1]*wGain[1]*wOverallGain;
-      wPositionChange[2] = wPositionChange[2]*wGain[2]*wOverallGain;
+      var wGain = [100.0, 100.0, 100.0];
+      var wPositionChange = [wJ1_State.y, wJ1_State.x, wJ1_State.z];
+      wPositionChange[0] = wPositionChange[0] * wGain[0] * wOverallGain;
+      wPositionChange[1] = wPositionChange[1] * wGain[1] * wOverallGain;
+      wPositionChange[2] = wPositionChange[2] * wGain[2] * wOverallGain;
 
       var wNewPosition = mod_PlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
-      , gGlobal.Ownship.location[1]
-      , gGlobal.Ownship.location[2]
-      , gGlobal.Ownship.eulerAngle[0]
-      , gGlobal.Ownship.eulerAngle[1]
-      , gGlobal.Ownship.eulerAngle[2]
-      , wPositionChange);
+        , gGlobal.Ownship.location[1]
+        , gGlobal.Ownship.location[2]
+        , gGlobal.Ownship.eulerAngle[0]
+        , gGlobal.Ownship.eulerAngle[1]
+        , gGlobal.Ownship.eulerAngle[2]
+        , wPositionChange);
 
       gGlobal.Ownship.location[0] = wNewPosition.latitude;
       gGlobal.Ownship.location[1] = wNewPosition.longitude;
@@ -472,47 +91,23 @@
 
     }
 
-    function updateCameraLocation(iDt) {
-
-      
-      var wNewPosition = mod_PlanetModel.addBodyVectorToGeoLocation(gGlobal.Ownship.location[0]
-      , gGlobal.Ownship.location[1]
-      , gGlobal.Ownship.location[2]
-      , gGlobal.Ownship.eulerAngle[0]
-      , gGlobal.Ownship.eulerAngle[1]
-      , gGlobal.Ownship.eulerAngle[2]
-      , gGlobal.ViewPoint.CameraPositionOffset);
-
-      var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
-      
-      var wEuler = [ gGlobal.Ownship.eulerAngle[0] + gGlobal.ViewPoint.CameraAngleOffset[0]
-                  ,  gGlobal.Ownship.eulerAngle[1] + gGlobal.ViewPoint.CameraAngleOffset[1]
-                  ,  gGlobal.Ownship.eulerAngle[2] + gGlobal.ViewPoint.CameraAngleOffset[2]];
-
-      var wEulerQuat = getEulerQuaternion(wNewPosition.latitude,wNewPosition.longitude, wEuler[0],wEuler[1],wEuler[2]);
-      
-      var wConversion = mod_PlanetModel.dimensionConversion(gGlobal.Planet.DrawRadius);
-      gGlobal.ViewPoint.Camera.position.set(wPosition.x*wConversion,wPosition.y*wConversion,wPosition.z*wConversion);
-      gGlobal.ViewPoint.Camera.rotation.setFromQuaternion(wEulerQuat);
-    }
-
     function updateEntities(iDt) {
       var wEntityList = [
         {
-          id:"Ownship",
-          time : (new Date()).getTime(),
-          location : gGlobal.Ownship.location,
-          eulerAngle : gGlobal.Ownship.eulerAngle,
-          modelPath : gGlobal.Ownship.modelPath,
-          modelRotation : gGlobal.Ownship.modelRotation,
-          modelOffset : gGlobal.Ownship.modelOffset,
-          modelScale : gGlobal.Ownship.modelScale
+          id: "Ownship",
+          time: (new Date()).getTime(),
+          location: gGlobal.Ownship.location,
+          eulerAngle: gGlobal.Ownship.eulerAngle,
+          modelPath: gGlobal.Ownship.modelPath,
+          modelRotation: gGlobal.Ownship.modelRotation,
+          modelOffset: gGlobal.Ownship.modelOffset,
+          modelScale: gGlobal.Ownship.modelScale
         }
       ]
-      
-      var wEntityId = gGlobal.EntityManger.generateEntityIdString("self", "Ownship" );
-      gGlobal.EntityManger.setEntityPosition(wEntityId, gGlobal.Ownship.location,  gGlobal.Ownship.eulerAngle);
-      setEntityModel(wEntityId, gGlobal.Ownship.modelPath, gGlobal.Ownship.modelRotation, gGlobal.Ownship.modelOffset,  gGlobal.Ownship.modelScale)
+
+      var wEntityId = gGlobal.EntityManger.generateEntityIdString("self", "Ownship");
+      gGlobal.EntityManger.setEntityPosition(wEntityId, gGlobal.Ownship.location, gGlobal.Ownship.eulerAngle);
+      gGlobal.ViewPoint.PlanetRenderer.setEntityModel(wEntityId, gGlobal.Ownship.modelPath, gGlobal.Ownship.modelRotation, gGlobal.Ownship.modelOffset, gGlobal.Ownship.modelScale)
 
       gGlobal.webRTI.setObject("EntityManager", "EntityList", wEntityList);
 
@@ -521,17 +116,17 @@
       if (null != wRemote) {
 
         var wEntries = Object.entries(wRemote);
-        
-        for (var wi = 0 ; wi < wEntries.length; ++wi){
+
+        for (var wi = 0; wi < wEntries.length; ++wi) {
           var wRemoteList = wEntries[wi][1];
-        
-          for (var wj = 0 ; wj < wRemoteList.length; ++wj){
+
+          for (var wj = 0; wj < wRemoteList.length; ++wj) {
             var wEntity = wRemoteList[wj];
-            var wEntityId = gGlobal.EntityManger.generateEntityIdString(wEntries[wi][0],wEntity.id );
+            var wEntityId = gGlobal.EntityManger.generateEntityIdString(wEntries[wi][0], wEntity.id);
             gGlobal.EntityManger.setEntityPosition(wEntityId, wEntity.location, wEntity.eulerAngle);
-            setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
-            
-          }     
+            gGlobal.ViewPoint.PlanetRenderer.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
+
+          }
 
         }
       }
@@ -542,17 +137,17 @@
     function processTime(iDt) {
       updateJoystick(iDt);
       updateEntities(iDt);
-      updateCameraLocation(iDt);
-      updateScene(iDt);
+      gGlobal.ViewPoint.PlanetRenderer.updateCameraLocation(iDt, gGlobal.Ownship.location, gGlobal.Ownship.eulerAngle);
+      gGlobal.ViewPoint.PlanetRenderer.updateScene(iDt);
     }
 
     function tick() {
       clearLog();
-      log( "Time : " + (new Date()).getTime() + " ms");
-      
+      log("Time : " + (new Date()).getTime() + " ms");
+
       var wTimeStep = (new Date()).getTime() - gGlobal.Time.LastTimeStamp;
       wTimeStep /= 1000;
-      
+
       log("Time Step : " + wTimeStep + " s");
 
       processTime(wTimeStep);
@@ -565,14 +160,14 @@
       var wDOM = document.getElementById("LogArea")
       wDOM.value += iLog + "\n";
     }
-    
+
     function clearLog() {
       var wDOM = document.getElementById("LogArea")
       wDOM.value = "";
     }
-    
+
     function init() {
-      
+
       console.log = function () {
         log("Console LOG: " + Array.from(arguments));
       }
@@ -584,19 +179,19 @@
       console.error = function () {
         log("Console ERROR: " + Array.from(arguments));
       }
-      
+
       log("Console Setup Complete");
 
-      if (null != mod_GamePad){
+      if (null != mod_GamePad) {
         var wJ1 = document.getElementById(gGlobal.ControlInput.OutputDiv_J1_id);
         gGlobal.ControlInput.JoyStick1 = new mod_GamePad.ThreeAxisJoystick(wJ1, true, 2);
 
         var wJ2 = document.getElementById(gGlobal.ControlInput.OutputDiv_J2_id);
         gGlobal.ControlInput.JoyStick2 = new mod_GamePad.ThreeAxisJoystick(wJ2, false, 7);
-        
+
         log("Joystick Creation Complete");
       }
-      
+
 
       gGlobal.socket = io("https://webrti.herokuapp.com");
       log("SocketIO Creation Complete");
@@ -605,18 +200,22 @@
       log("WebRTI Federate Creation Complete");
 
       gGlobal.EntityManger = new mod_EntityManager.EntityManager();
-      gGlobal.EntityManger.EntityCreationFunction = entityCreationFunction;
-      gGlobal.EntityManger.EntityDeletionFunction = entityDeletionFunction;
-      gGlobal.EntityManger.EntitySetPositionFunction = entitySetPositionFunction;
-      
+
       log("Entity Manager Creation Complete");
 
-      setupViewPoint();
+      var wGLTFloader = new THREE.GLTFLoader();
+      wGLTFloader.crossOrigin = true;
+
+      gGlobal.ViewPoint.PlanetRenderer = new mod_PlanetRenderer.PlanetRenderer(gGlobal.ViewPoint.CanvasId, gGlobal.ViewPoint.DrawRadius, wGLTFloader);
+      gGlobal.ViewPoint.PlanetRenderer.bindEntityManager(gGlobal.EntityManger);
+
+
+      gGlobal.ViewPoint.PlanetRenderer.setupViewPoint();
       log("Setup ViewPoint Complete");
 
-  		setupScene();
+      gGlobal.ViewPoint.PlanetRenderer.setupScene();
       log("Setup Scene Complete");
-      
+
       log("Starting Tick");
       tick();
     }
@@ -641,7 +240,7 @@
     bottom: 10px;
     left: 10px;
   }
-  
+
   #id_JoyStick_2 {
     width: 150px;
     height: 150px;
@@ -650,7 +249,7 @@
     bottom: 10px;
     right: 10px;
   }
-  
+
   #id_OutputCanvasContainer {
     width: 100vw;
     height: 100vh;
@@ -668,12 +267,14 @@
     left: 0px;
 
   }
+
   #LogArea {
     resize: both;
     overflow: auto;
     min-width: 300px;
   }
 </style>
+
 <body>
   <div id="id_OutputCanvasContainer">
     <canvas id="id_OutputCanvas"></canvas>

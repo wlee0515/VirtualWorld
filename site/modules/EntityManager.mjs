@@ -38,6 +38,13 @@ export function EntityManager() {
     return this.EntityList[iEntityId];
   }
 
+  this.findEntity = function (iEntityId) {
+    if (iEntityId in  this.EntityList) {
+      return this.EntityList[iEntityId];
+    }
+    return null;
+  }
+
   this.removeNoneUpdated = function () {
     var wEntries = Object.entries(this.EntityList);
     for (var wi = 0; wi < wEntries.length; ++wi) {
