@@ -59,7 +59,7 @@
           Ground : "../images/ground_01.png",
         }
       },
-      
+
       socket: null,
       webRTI : null,
 
@@ -706,7 +706,9 @@
     
   </script>
   <script type="module">
-    
+
+    import {mergeObject} from "../modules/Utility.mjs";
+
     import GamePadObj from "https://wlee0515.github.io/site/modules/GamePad.mjs";
 
     function init() {
