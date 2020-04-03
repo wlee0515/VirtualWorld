@@ -12,7 +12,10 @@ def send_index():
     
 @app.route('/site/<path:path>')
 def send_site(path):
-    return send_from_directory('./site', path)
+    if path.endswith(".mjs"):
+        return send_from_directory('./site', path, as_attachment=True, mimetype='text/javascript')
+    else:
+        return send_from_directory('./site', path)
 
 def main():
 
