@@ -4,15 +4,13 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Virtual World ViewPoint</title>
-  <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/utility.js"></script>
-  <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/WebRTI.js"></script>
-  <script type="text/javascript" src="https://webrti.herokuapp.com/script/javascript/socket.io-1.2.0.js"></script>
   <script type="module">
 
     import mod_EntityManager from "../modules/EntityManager.mjs";
     import mod_PlanetModel from "../modules/PlanetModel.mjs";
     import mod_PlanetRenderer from "../modules/PlanetRenderer.mjs";
     import mod_GamePad from "https://wlee0515.github.io/site/modules/GamePad.mjs";
+    import * as mod_WebRTI from "https://webrti.herokuapp.com/script/javascript/WebRTI.mjs";
 
     const gDegToRad = Math.PI / 180;
     const gRadToDeg = 180 / Math.PI;
@@ -191,10 +189,7 @@
       }
 
 
-      gGlobal.socket = io("https://webrti.herokuapp.com");
-      log("SocketIO Creation Complete");
-
-      gGlobal.webRTI = new WebRTI(gGlobal.socket);
+      gGlobal.webRTI = new mod_WebRTI.WebRTI();
       log("WebRTI Federate Creation Complete");
 
       gGlobal.EntityManger = new mod_EntityManager.EntityManager();

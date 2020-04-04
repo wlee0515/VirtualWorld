@@ -1,3 +1,4 @@
+import * as mod_utility from "./utility.mjs";
 import mod_PlanetModel from "./PlanetModel.mjs";
 import * as THREE from '../javascript/threejs/three.mjs';
 import { GLTFLoader } from '../javascript/threejs/jsm/loaders/GLTFLoader.mjs';
@@ -61,7 +62,7 @@ export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
 
   this.entityCreationFunction = function (iEntityId, iEntity) {
     var wGeometry = new THREE.BoxGeometry(1, 1, 1);
-    var wMaterial = new THREE.MeshLambertMaterial({ color: hashCode(iEntityId) });
+    var wMaterial = new THREE.MeshLambertMaterial({ color: mod_utility.hashCode(iEntityId) });
     var wMesh = new THREE.Mesh(wGeometry, wMaterial);
     var wGroup = new THREE.Group();
     wGroup.add(wMesh);
