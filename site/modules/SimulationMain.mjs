@@ -1,5 +1,4 @@
 import * as mod_EntityManager from "../modules/EntityManager.mjs";
-import * as mod_PlanetModel from "../modules/PlanetModel.mjs";
 import * as mod_PlanetRenderer from "../modules/PlanetRenderer.mjs";
 import * as mod_WebRTI from "https://webrti.herokuapp.com/script/javascript/WebRTI.mjs";
 
@@ -12,7 +11,7 @@ function SimulationMain (iViewPointCanvasId) {
   }
 
   this.providers = {
-    WebRTI : new mod_WebRTI.WebRTI(),
+    WebRTI : new mod_WebRTI.WebRTI("https://webrti.herokuapp.com"),
     EntityManager : new mod_EntityManager.EntityManager(),
   }
 
