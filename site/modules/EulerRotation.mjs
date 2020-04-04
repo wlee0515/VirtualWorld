@@ -1,7 +1,7 @@
 const gDegToRad = Math.PI/180;
 const gRadToDeg = 180/Math.PI;
 
-export function rotateAxisCW(iAngle, iAxis, iVector) {
+function rotateAxisCW(iAngle, iAxis, iVector) {
   var wTempVector = [iVector[0], iVector[1], iVector[2]];
 
   var wAxis1 = (iAxis + 1) % 3;
@@ -14,7 +14,7 @@ export function rotateAxisCW(iAngle, iAxis, iVector) {
   return wTempVector;
 }
 
-export function rotateAxisCCW(iAngle, iAxis, iVector) {
+function rotateAxisCCW(iAngle, iAxis, iVector) {
   var wTempVector = [iVector[0], iVector[1], iVector[2]];
 
   var wAxis1 = (iAxis + 1) % 3;
@@ -27,7 +27,7 @@ export function rotateAxisCCW(iAngle, iAxis, iVector) {
   return wTempVector;
 }
 
-export function rotateNEDToBody(iRoll, iPitch, iYaw, iNEDVector) {
+function rotateNEDToBody(iRoll, iPitch, iYaw, iNEDVector) {
   var wBodyVector = [iNEDVector[0], iNEDVector[1], iNEDVector[2]];
   wBodyVector = rotateAxisCW(iYaw, 2, wBodyVector);
   wBodyVector = rotateAxisCW(iPitch, 1, wBodyVector);
@@ -36,7 +36,7 @@ export function rotateNEDToBody(iRoll, iPitch, iYaw, iNEDVector) {
   return wBodyVector;
 }
 
-export function rotateBodyToNED(iRoll, iPitch, iYaw, iBodyVector) {
+function rotateBodyToNED(iRoll, iPitch, iYaw, iBodyVector) {
   var wNEDVector = [iBodyVector[0], iBodyVector[1], iBodyVector[2]];
   wNEDVector = rotateAxisCW(-iRoll, 0, wNEDVector);
   wNEDVector = rotateAxisCW(-iPitch, 1, wNEDVector);
@@ -46,10 +46,10 @@ export function rotateBodyToNED(iRoll, iPitch, iYaw, iBodyVector) {
 
 }
 
-export default {
-  rotateAxisCW: rotateAxisCW,
-  rotateAxisCCW: rotateAxisCCW,
-  rotateNEDToBody: rotateNEDToBody,
-  rotateBodyToNED: rotateBodyToNED
+export {
+  rotateAxisCW,
+  rotateAxisCCW,
+  rotateNEDToBody,
+  rotateBodyToNED
 }
 

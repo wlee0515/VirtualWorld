@@ -1,4 +1,4 @@
-export function EntityManager() {
+function EntityManager() {
   this.EntityList = {};
 
   this.EntityCreationFunction = null;
@@ -140,6 +140,6 @@ export function EntityManager() {
 }
 
 
-export default {
-  EntityManager: EntityManager
+export {
+  EntityManager
 }

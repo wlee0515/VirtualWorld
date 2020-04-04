@@ -1,14 +1,14 @@
-import EulerRotation from "./EulerRotation.mjs";
+import * as mod_EulerRotation from "./EulerRotation.mjs";
 
 const gDegToRad = Math.PI/180;
 const gRadToDeg = 180/Math.PI;
 const gPlanetRadius = 6371000; //m
 
-export function dimensionConversion (iDrawRadius ) {
+function dimensionConversion (iDrawRadius ) {
   return iDrawRadius/gPlanetRadius;
 }
 
-export function convertGeoCoordinateToGeoCentric (iLatitude, iLongitude, iAltitude ) {
+function convertGeoCoordinateToGeoCentric (iLatitude, iLongitude, iAltitude ) {
       
   var wLatitude = iLatitude*gDegToRad;
   var wLongitude = iLongitude*gDegToRad;
@@ -24,7 +24,7 @@ export function convertGeoCoordinateToGeoCentric (iLatitude, iLongitude, iAltitu
 }
 
 
-export function addNEDVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iNEDVector) {
+function addNEDVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iNEDVector) {
       
   var wLatitude = iLatitude*gDegToRad;
   var wLongitude = iLongitude*gDegToRad;
@@ -65,18 +65,19 @@ export function addNEDVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iN
 }
 
 
-export function addBodyVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iRoll, iPitch, iYaw, iBodyVector) {
+function addBodyVectorToGeoLocation (iLatitude, iLongitude , iAltitude, iRoll, iPitch, iYaw, iBodyVector) {
   
-  var wNEDVector = EulerRotation.rotateBodyToNED( iRoll, iPitch, iYaw, iBodyVector);
+  var wNEDVector = mod_EulerRotation.rotateBodyToNED( iRoll, iPitch, iYaw, iBodyVector);
   return addNEDVectorToGeoLocation(iLatitude, iLongitude , iAltitude , wNEDVector);
 }
 
 
-export default {
-  Radius : gPlanetRadius,
-  dimensionConversion : dimensionConversion,
-  convertGeoCoordinateToGeoCentric : convertGeoCoordinateToGeoCentric,
-  addNEDVectorToGeoLocation : addNEDVectorToGeoLocation,
-  addBodyVectorToGeoLocation : addBodyVectorToGeoLocation
+const Radius = gPlanetRadius;
+export {
+  Radius,
+  dimensionConversion,
+  convertGeoCoordinateToGeoCentric,
+  addNEDVectorToGeoLocation,
+  addBodyVectorToGeoLocation
 }
 

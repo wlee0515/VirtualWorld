@@ -1,5 +1,5 @@
 import * as mod_utility from "./utility.mjs";
-import mod_PlanetModel from "./PlanetModel.mjs";
+import * as mod_PlanetModel from "./PlanetModel.mjs";
 import * as THREE from '../javascript/threejs/three.mjs';
 import { GLTFLoader } from '../javascript/threejs/jsm/loaders/GLTFLoader.mjs';
 
@@ -32,7 +32,7 @@ function getEulerQuaternion (iLatitude, iLongitude, iRoll, iPitch, iYaw ) {
   return wQuat1;
 }
 
-export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
+function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
   
   this.InternalData = {
     CanvasId : iOutputCanvasId,
@@ -403,7 +403,7 @@ export function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
 
 }
 
-export default {
-  PlanetRenderer: PlanetRenderer
+export {
+  PlanetRenderer
 }
 
