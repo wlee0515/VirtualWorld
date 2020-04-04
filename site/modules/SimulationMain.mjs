@@ -100,7 +100,7 @@ function SimulationMain (iViewPointCanvasId) {
           time: (new Date()).getTime(),
           location: this.Ownship.location,
           eulerAngle: this.Ownship.eulerAngle,
-          modelPath: this.Ownship.modelPath,
+          modelPath: this.Ownship.modelInfo.modelPath,
           modelRotation: this.Ownship.modelInfo.modelRotation,
           modelOffset: this.Ownship.modelInfo.modelOffset,
           modelScale: this.Ownship.modelInfo.modelScale
@@ -138,7 +138,9 @@ function SimulationMain (iViewPointCanvasId) {
           var wEntity = wRemoteList[wj];
           var wEntityId = this.providers.EntityManager.generateEntityIdString(wEntries[wi][0], wEntity.id);
           this.providers.EntityManager.setEntityPosition(wEntityId, wEntity.location, wEntity.eulerAngle);
-          this.ViewPoint.WorldRenderer.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
+          if (null != wEntity.modelPath) {
+            this.ViewPoint.WorldRenderer.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale);            
+          }
         }
 
       }
