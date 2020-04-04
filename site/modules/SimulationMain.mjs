@@ -138,7 +138,7 @@ function SimulationMain (iViewPointCanvasId) {
           var wEntity = wRemoteList[wj];
           var wEntityId = this.providers.EntityManager.generateEntityIdString(wEntries[wi][0], wEntity.id);
           this.providers.EntityManager.setEntityPosition(wEntityId, wEntity.location, wEntity.eulerAngle);
-          this.providers.ViewPoint.WorldRenderer.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
+          this.ViewPoint.WorldRenderer.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
         }
 
       }
