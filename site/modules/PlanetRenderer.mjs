@@ -377,22 +377,22 @@ function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
   }
   
   
-  this.updateCameraLocation = function (iDt, iOriginGeoCoordinate, iOrigineEulerAngle) {
+  this.updateCameraOrigin = function (iDt, iGeoCoordinate, iEulerAngle) {
 
     var wNewPosition = mod_PlanetModel.addBodyVectorToGeoLocation(
-      iOriginGeoCoordinate[0]
-    , iOriginGeoCoordinate[1]
-    , iOriginGeoCoordinate[2]
-    , iOrigineEulerAngle[0]
-    , iOrigineEulerAngle[1]
-    , iOrigineEulerAngle[2]
+      iGeoCoordinate[0]
+    , iGeoCoordinate[1]
+    , iGeoCoordinate[2]
+    , iEulerAngle[0]
+    , iEulerAngle[1]
+    , iEulerAngle[2]
     , this.InternalData.CameraPositionOffset);
 
     var wPosition = mod_PlanetModel.convertGeoCoordinateToGeoCentric(wNewPosition.latitude,wNewPosition.longitude,wNewPosition.altitude);
     
-    var wEuler = [ iOrigineEulerAngle[0] + this.InternalData.CameraAngleOffset[0]
-                ,  iOrigineEulerAngle[1] + this.InternalData.CameraAngleOffset[1]
-                ,  iOrigineEulerAngle[2] + this.InternalData.CameraAngleOffset[2]];
+    var wEuler = [ iEulerAngle[0] + this.InternalData.CameraAngleOffset[0]
+                ,  iEulerAngle[1] + this.InternalData.CameraAngleOffset[1]
+                ,  iEulerAngle[2] + this.InternalData.CameraAngleOffset[2]];
 
     var wEulerQuat = getEulerQuaternion(wNewPosition.latitude,wNewPosition.longitude, wEuler[0],wEuler[1],wEuler[2]);
     

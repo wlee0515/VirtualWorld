@@ -6,20 +6,11 @@
   <title>Virtual World ViewPoint</title>
   <script type="module">
 
-    import * as mod_EntityManager from "../modules/EntityManager.mjs";
     import * as mod_PlanetModel from "../modules/PlanetModel.mjs";
-    import * as mod_PlanetRenderer from "../modules/PlanetRenderer.mjs";
     import * as mod_GamePad from "https://wlee0515.github.io/site/modules/GamePad.mjs";
-    import * as mod_WebRTI from "https://webrti.herokuapp.com/script/javascript/WebRTI.mjs";
-
-    const gDegToRad = Math.PI / 180;
-    const gRadToDeg = 180 / Math.PI;
+    import * as mod_SimulationMain from "../modules/SimulationMain.mjs";
 
     var gGlobal = {
-      Time: {
-        LastTimeStamp: (new Date()).getTime()
-      },
-
       ControlInput: {
         JoyStick1: null,
         JoyStick2: null,
@@ -29,8 +20,6 @@
 
       ViewPoint: {
         CanvasId: "id_OutputCanvas",
-        DrawRadius: 5000,
-        PlanetRenderer: null,
       },
 
       Ownship: {
@@ -43,9 +32,7 @@
 
       },
 
-      socket: null,
-      webRTI: null,
-      EntityManager: null,
+      SimulationMain : null,
       placeHolder: 0
     }
 
@@ -85,70 +72,16 @@
       gGlobal.Ownship.location[1] = wNewPosition.longitude;
       gGlobal.Ownship.location[2] = wNewPosition.altitude;
 
-    }
-
-    function updateEntities(iDt) {
-      var wEntityList = [
-        {
-          id: "Ownship",
-          time: (new Date()).getTime(),
-          location: gGlobal.Ownship.location,
-          eulerAngle: gGlobal.Ownship.eulerAngle,
-          modelPath: gGlobal.Ownship.modelPath,
-          modelRotation: gGlobal.Ownship.modelRotation,
-          modelOffset: gGlobal.Ownship.modelOffset,
-          modelScale: gGlobal.Ownship.modelScale
-        }
-      ]
-
-      var wEntityId = gGlobal.EntityManger.generateEntityIdString("self", "Ownship");
-      gGlobal.EntityManger.setEntityPosition(wEntityId, gGlobal.Ownship.location, gGlobal.Ownship.eulerAngle);
-      gGlobal.ViewPoint.PlanetRenderer.setEntityModel(wEntityId, gGlobal.Ownship.modelPath, gGlobal.Ownship.modelRotation, gGlobal.Ownship.modelOffset, gGlobal.Ownship.modelScale)
-
-      gGlobal.webRTI.setObject("EntityManager", "EntityList", wEntityList);
-
-      var wRemote = gGlobal.webRTI.getRemoteObjectList("EntityManager", "EntityList");
-
-      if (null != wRemote) {
-
-        var wEntries = Object.entries(wRemote);
-
-        for (var wi = 0; wi < wEntries.length; ++wi) {
-          var wRemoteList = wEntries[wi][1];
-
-          for (var wj = 0; wj < wRemoteList.length; ++wj) {
-            var wEntity = wRemoteList[wj];
-            var wEntityId = gGlobal.EntityManger.generateEntityIdString(wEntries[wi][0], wEntity.id);
-            gGlobal.EntityManger.setEntityPosition(wEntityId, wEntity.location, wEntity.eulerAngle);
-            gGlobal.ViewPoint.PlanetRenderer.setEntityModel(wEntityId, wEntity.modelPath, wEntity.modelRotation, wEntity.modelOffset, wEntity.modelScale)
-
-          }
-
-        }
-      }
-      gGlobal.EntityManger.removeNoneUpdated();
-
-    }
-
-    function processTime(iDt) {
-      updateJoystick(iDt);
-      updateEntities(iDt);
-      gGlobal.ViewPoint.PlanetRenderer.updateCameraLocation(iDt, gGlobal.Ownship.location, gGlobal.Ownship.eulerAngle);
-      gGlobal.ViewPoint.PlanetRenderer.updateScene(iDt);
-    }
-
-    function tick() {
-      clearLog();
-      log("Time : " + (new Date()).getTime() + " ms");
-
-      var wTimeStep = (new Date()).getTime() - gGlobal.Time.LastTimeStamp;
-      wTimeStep /= 1000;
-
-      log("Time Step : " + wTimeStep + " s");
-
-      processTime(wTimeStep);
-      window.requestAnimationFrame(tick);
-      gGlobal.Time.LastTimeStamp = (new Date()).getTime();
+      gGlobal.SimulationMain.setOwnshipLocation(
+        gGlobal.Ownship.location[0]
+        , gGlobal.Ownship.location[1]
+        , gGlobal.Ownship.location[2]
+      );
+      gGlobal.SimulationMain.setOwnshipEulerAngles(
+         gGlobal.Ownship.eulerAngle[0]
+        , gGlobal.Ownship.eulerAngle[1]
+        , gGlobal.Ownship.eulerAngle[2]
+      );
 
     }
 
@@ -188,26 +121,17 @@
         log("Joystick Creation Complete");
       }
 
+      gGlobal.SimulationMain = new mod_SimulationMain.SimulationMain(gGlobal.ViewPoint.CanvasId);
+      gGlobal.SimulationMain.subscribeToEntryPointCallback(updateJoystick);
+      gGlobal.SimulationMain.setOwnshipModelInfo (
+        gGlobal.Ownship.modelPath
+        , gGlobal.Ownship.modelRotation
+        , gGlobal.Ownship.modelOffset
+        , gGlobal.Ownship.modelScale
 
-      gGlobal.webRTI = new mod_WebRTI.WebRTI();
-      log("WebRTI Federate Creation Complete");
+      )
 
-      gGlobal.EntityManger = new mod_EntityManager.EntityManager();
-
-      log("Entity Manager Creation Complete");
-
-      gGlobal.ViewPoint.PlanetRenderer = new mod_PlanetRenderer.PlanetRenderer(gGlobal.ViewPoint.CanvasId, gGlobal.ViewPoint.DrawRadius);
-      gGlobal.ViewPoint.PlanetRenderer.bindEntityManager(gGlobal.EntityManger);
-
-
-      gGlobal.ViewPoint.PlanetRenderer.setupViewPoint();
-      log("Setup ViewPoint Complete");
-
-      gGlobal.ViewPoint.PlanetRenderer.setupScene();
-      log("Setup Scene Complete");
-
-      log("Starting Tick");
-      tick();
+      gGlobal.SimulationMain.startSimulation();
     }
 
     window.addEventListener("load", init);
