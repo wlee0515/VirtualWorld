@@ -56,6 +56,7 @@ function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
     Textures : {
       Ring : "../images/ribbon_white_d3.png",
       Ground : "../images/ground_01.png",
+      Water : "../images/water_01.png",
     }
   },
   this.mEntityManagerList = [];
@@ -268,7 +269,7 @@ function PlanetRenderer(iOutputCanvasId, iPlanetDrawRadius) {
     wPlanetGroup.name = "Planet";
     this.InternalData.Scene.add( wPlanetGroup );
     
-    var wPlanetTexture = new THREE.TextureLoader().load(this.Images.Textures.Ground);
+    var wPlanetTexture = new THREE.TextureLoader().load(this.Images.Textures.Water);
     wPlanetTexture.magFilter = THREE.NearestFilter;
     wPlanetTexture.minFilter = THREE.NearestMipmapLinearFilter;
     //wPlanetTexture.anisotropy = 16;
